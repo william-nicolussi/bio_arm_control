@@ -1,0 +1,510 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>nn_lut_W=0.2_3L_32U_tanh</title>
+<style>
+    body {
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+        margin: 0;
+        padding: 0;
+        background: #ffffff;
+        color: #111;
+    }
+    header {
+        padding: 12px 16px;
+        border-bottom: 1px solid #eee;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .header-left {
+        justify-self: start;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .header-right {
+        justify-self: end;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    header h1 {
+        font-size: 16px;
+        margin: 0;
+        font-weight: 600;
+    }
+    .legend {
+        margin-left: auto;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        font-size: 12px;
+        color: #444;
+        flex-wrap: wrap;
+    }
+    .swatch {
+        width: 10px;
+        height: 10px;
+        border-radius: 3px;
+        display: inline-block;
+        border: 1px solid #2c3e50;
+        margin-right: 6px;
+    }
+    .roll-arrow {
+        color: #e74c3c;
+        display: inline-block;
+        font-size: 17px;
+        font-weight: 700;
+        line-height: 10px;
+        margin-right: 5px;
+        vertical-align: -1px;
+    }
+    .toolbar {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 8px 16px;
+        border-bottom: 1px solid #eee;
+        background: #fbfbfb;
+        font-size: 12px;
+        flex-wrap: wrap;
+    }
+    #search {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 5px 9px;
+        font-size: 12px;
+        width: 220px;
+    }
+    #searchInfo {
+        color: #666;
+    }
+    .main {
+        display: flex;
+        width: 100%;
+        height: 86vh;
+    }
+    #network {
+        flex: 1 1 auto;
+        min-width: 0;
+        height: 100%;
+    }
+    #inspector {
+        width: 340px;
+        min-width: 340px;
+        max-width: 340px;
+        border-left: 1px solid #eee;
+        background: #fafafa;
+        overflow: auto;
+        padding: 14px;
+        box-sizing: border-box;
+    }
+    #inspector h2 {
+        font-size: 14px;
+        margin: 0 0 10px 0;
+        font-weight: 600;
+    }
+    #inspector .empty {
+        font-size: 12px;
+        color: #666;
+        line-height: 1.5;
+    }
+    #boundary {
+        border-bottom: 1px solid #e5e7eb;
+        padding-bottom: 12px;
+        margin-bottom: 14px;
+    }
+    .attr-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        table-layout: fixed;
+    }
+    .attr-table th,
+    .attr-table td {
+        border: 1px solid #e5e7eb;
+        padding: 6px 8px;
+        text-align: left;
+        vertical-align: top;
+        word-break: break-word;
+    }
+    .attr-table th {
+        width: 34%;
+        background: #f3f4f6;
+        font-weight: 600;
+    }
+    .ports {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        margin: 4px 0 10px 0;
+    }
+    .ports td {
+        border: 1px solid #e5e7eb;
+        padding: 4px 6px;
+        word-break: break-word;
+    }
+    .ports .role {
+        color: #666;
+        white-space: nowrap;
+        width: 1%;
+    }
+    .ports-title {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        color: #666;
+        margin-top: 10px;
+    }
+    .btn {
+        border: 1px solid #ddd;
+        background: #fafafa;
+        padding: 6px 10px;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 12px;
+    }
+    .btn:hover {
+        background: #f2f2f2;
+    }
+    .crumb {
+        font-size: 12px;
+        color: #444;
+        text-decoration: none;
+        border-bottom: 1px dashed #bbb;
+    }
+    .crumb:hover {
+        color: #111;
+        border-bottom-color: #111;
+    }
+    .open-link {
+        display: inline-block;
+        margin-top: 10px;
+        font-size: 12px;
+        color: #2563eb;
+        text-decoration: none;
+    }
+    .open-link:hover {
+        text-decoration: underline;
+    }
+    .bottom-bar {
+        height: 4vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: #fff;
+    }
+    .toggle-btn {
+        border: 1px solid #ddd;
+        background: #3498db;
+        padding: 8px 14px 8px 14px;
+        border-radius: 12px;
+        cursor: pointer;
+        font-size: 16px;
+        color: #fafafa;
+        text-decoration: none;
+    }
+    .toggle-btn:hover {
+        background: #2563eb;
+    }
+</style>
+<script src="https://unpkg.com/vis-network@10.1.2/standalone/umd/vis-network.min.js"
+        integrity="sha384-RDdG1CLOxjNlTHh4JYx/rnAueaMHbkBHmeHwrEyljMQw3LF0it4SkuNotIY/FPxD"
+        crossorigin="anonymous"></script>
+</head>
+<body>
+<header>
+    <div class="header-left">
+        <img src="./imgs/logo_info.png" alt="nnodely logo" width="120" height="40"/>
+        <h1>nn_lut_W=0.2_3L_32U_tanh [flattened]</h1>
+        
+    </div>
+    <div class="legend">
+        <span><span class="swatch" style="background:#2ecc71"></span>Input</span>
+        <span><span class="swatch" style="background:#e74c3c"></span>Output</span>
+        <span><span class="swatch" style="background:#3498db"></span>Submodel</span>
+        <span><span class="swatch" style="background:#ff9900"></span>Parameter</span>
+        <span><span class="swatch" style="background:#00e5ff"></span>Constant</span>
+        <span><span class="swatch" style="background:#95a5a6"></span>Relation</span>
+        <span><span class="swatch" style="background:#8e44ad"></span>Loss</span>
+        <span><span class="roll-arrow">→</span>Roll</span>
+    </div>
+    <div class="header-right">
+        <div class="bottom-bar">
+            
+            <a class="toggle-btn" href="nn_architecture.html">Standard</a>
+            
+        </div>
+    </div>
+</header>
+
+<div class="toolbar">
+    <input id="search" type="search" placeholder="Find node by name…" autocomplete="off"/>
+    <span id="searchInfo"></span>
+    <button id="layoutBtn" class="btn"></button>
+    <span id="graphInfo"></span>
+</div>
+
+<div class="main">
+    <div id="network"></div>
+    <aside id="inspector">
+        
+        <h2>Node details</h2>
+        <div id="inspectorContent" class="empty">
+            Click a node to inspect its attributes.
+        </div>
+    </aside>
+</div>
+
+<script>
+    const nodes = new vis.DataSet([{"id": "angle", "label": "angle", "shape": "dot", "size": 14, "color": {"background": "#2ecc71", "border": "#2c3e50", "highlight": {"background": "#f1c40f", "border": "#2c3e50"}}, "font": {"color": "#111111"}, "title": "angle\nInput (1, 1)", "level": 0}, {"id": "SampleWindow389", "label": "SampleWindow389", "shape": "dot", "size": 14, "color": {"background": "#95a5a6", "border": "#2c3e50", "highlight": {"background": "#f1c40f", "border": "#2c3e50"}}, "font": {"color": "#111111"}, "title": "SampleWindow389\nSampleWindow (1, 1)", "level": 1}, {"id": "Constant3", "label": "Constant3", "shape": "dot", "size": 14, "color": {"background": "#00e5ff", "border": "#2c3e50", "highlight": {"background": "#f1c40f", "border": "#2c3e50"}}, "font": {"color": "#111111"}, "title": "Constant3\nConstant (1, 1)", "level": 1}, {"id": "Subtract390", "label": "Subtract390", "shape": "dot", "size": 14, "color": {"background": "#95a5a6", "border": "#2c3e50", "highlight": {"background": "#f1c40f", "border": "#2c3e50"}}, "font": {"color": "#111111"}, "title": "Subtract390\nSubtract (1, 1)", "level": 2}, {"id": "Constant5", "label": "Constant5", "shape": "dot", "size": 14, "color": {"background": "#00e5ff", "border": "#2c3e50", "highlight": {"background": "#f1c40f", "border": "#2c3e50"}}, "font": {"color": "#111111"}, "title": "Constant5\nConstant (1, 1)", "level": 2}, {"id": "Divide391", "label": "Divide391", "shape": "dot", "size": 14, "color": {"background": "#95a5a6", "border": "#2c3e50", "highlight": {"background": "#f1c40f", "border": "#2c3e50"}}, "font": {"color": "#111111"}, "title": "Divide391\nDivide (1, 1)", "level": 3}, {"id": "torque_norm", "label": "torque_norm", "shape": "dot", "size": 14, "color": {"background": "#2ecc71", "border": "#2c3e50", "highlight": {"background": "#f1c40f", "border": "#2c3e50"}}, "font": {"color": "#111111"}, "title": "torque_norm\nInput (1, 1)", "level": 0}, {"id": "SampleWindow393", "label": "SampleWindow393", "shape": "dot", "size": 14, "color": {"background": "#95a5a6", "border": "#2c3e50", "highlight": {"background": "#f1c40f", "border": "#2c3e50"}}, "font": {"color": "#111111"}, "title": "SampleWindow393\nSampleWindow (1, 1)", "level": 1}, {"id": "Concatenate392", "label": "Concatenate392", "shape": "dot", "size": 14, "color": {"background": "#95a5a6", "border": "#2c3e50", "highlight": {"background": "#f1c40f", "border": "#2c3e50"}}, "font": {"color": "#111111"}, "title": "Concatenate392\nConcatenate (2, 1)", "level": 4}, {"id": "Linear395", "label": "Linear395", "shape": "dot", "size": 14, "color": {"background": "#95a5a6", "border": "#2c3e50", "highlight": {"background": "#f1c40f", "border": "#2c3e50"}}, "font": {"color": "#111111"}, "title": "Linear395\nLinear (32, 1)", "level": 5}, {"id": "Tanh394", "label": "Tanh394", "shape": "dot", "size": 14, "color": {"background": "#95a5a6", "border": "#2c3e50", "highlight": {"background": "#f1c40f", "border": "#2c3e50"}}, "font": {"color": "#111111"}, "title": "Tanh394\nTanh (32, 1)", "level": 6}, {"id": "Linear397", "label": "Linear397", "shape": "dot", "size": 14, "color": {"background": "#95a5a6", "border": "#2c3e50", "highlight": {"background": "#f1c40f", "border": "#2c3e50"}}, "font": {"color": "#111111"}, "title": "Linear397\nLinear (32, 1)", "level": 7}, {"id": "Tanh396", "label": "Tanh396", "shape": "dot", "size": 14, "color": {"background": "#95a5a6", "border": "#2c3e50", "highlight": {"background": "#f1c40f", "border": "#2c3e50"}}, "font": {"color": "#111111"}, "title": "Tanh396\nTanh (32, 1)", "level": 8}, {"id": "Linear399", "label": "Linear399", "shape": "dot", "size": 14, "color": {"background": "#95a5a6", "border": "#2c3e50", "highlight": {"background": "#f1c40f", "border": "#2c3e50"}}, "font": {"color": "#111111"}, "title": "Linear399\nLinear (32, 1)", "level": 9}, {"id": "Tanh398", "label": "Tanh398", "shape": "dot", "size": 14, "color": {"background": "#95a5a6", "border": "#2c3e50", "highlight": {"background": "#f1c40f", "border": "#2c3e50"}}, "font": {"color": "#111111"}, "title": "Tanh398\nTanh (32, 1)", "level": 10}, {"id": "Linear400", "label": "Linear400", "shape": "dot", "size": 14, "color": {"background": "#95a5a6", "border": "#2c3e50", "highlight": {"background": "#f1c40f", "border": "#2c3e50"}}, "font": {"color": "#111111"}, "title": "Linear400\nLinear (6, 1)", "level": 11}, {"id": "Sigmoid401", "label": "Sigmoid401", "shape": "dot", "size": 14, "color": {"background": "#95a5a6", "border": "#2c3e50", "highlight": {"background": "#f1c40f", "border": "#2c3e50"}}, "font": {"color": "#111111"}, "title": "Sigmoid401\nSigmoid (6, 1)", "level": 12}, {"id": "u_pred", "label": "u_pred", "shape": "dot", "size": 14, "color": {"background": "#e74c3c", "border": "#2c3e50", "highlight": {"background": "#f1c40f", "border": "#2c3e50"}}, "font": {"color": "#111111"}, "title": "u_pred\nOutput (6, 1)", "level": 13}, {"id": "__min_nn_lut_W=0.2_3L_32U_tanh_loss", "label": "nn_lut_W=0.2_3L_32U_tanh_loss\nmean_squared_error", "shape": "hexagon", "size": 18, "color": {"background": "#8e44ad", "border": "#6c3483", "highlight": {"background": "#a569bd", "border": "#6c3483"}}, "font": {"color": "#6c3483", "bold": {"color": "#6c3483"}}, "title": "minimize nn_lut_W=0.2_3L_32U_tanh_loss\nloss: mean_squared_error", "level": 14}, {"id": "SampleWindow402", "label": "SampleWindow402", "shape": "dot", "size": 14, "color": {"background": "#95a5a6", "border": "#8e44ad", "highlight": {"background": "#f1c40f", "border": "#8e44ad"}}, "font": {"color": "#111111"}, "title": "SampleWindow402\nSampleWindow (training target)", "level": 0}]);
+    const edges = new vis.DataSet([{"from": "angle", "to": "SampleWindow389", "arrows": "to", "label": "(1, 1)", "font": {"align": "middle", "size": 10}, "title": "{\n  \"from\": \"angle\",\n  \"to\": \"SampleWindow389\",\n  \"shape\": \"(1, 1)\"\n}", "color": {"color": "#7f8c8d"}}, {"from": "SampleWindow389", "to": "Subtract390", "arrows": "to", "label": "(1, 1)", "font": {"align": "middle", "size": 10}, "title": "{\n  \"from\": \"SampleWindow389\",\n  \"to\": \"Subtract390\",\n  \"shape\": \"(1, 1)\"\n}", "color": {"color": "#7f8c8d"}}, {"from": "Constant3", "to": "Subtract390", "arrows": "to", "label": "(1, 1)", "font": {"align": "middle", "size": 10}, "title": "{\n  \"from\": \"Constant3\",\n  \"to\": \"Subtract390\",\n  \"shape\": \"(1, 1)\"\n}", "color": {"color": "#7f8c8d"}}, {"from": "Subtract390", "to": "Divide391", "arrows": "to", "label": "(1, 1)", "font": {"align": "middle", "size": 10}, "title": "{\n  \"from\": \"Subtract390\",\n  \"to\": \"Divide391\",\n  \"shape\": \"(1, 1)\"\n}", "color": {"color": "#7f8c8d"}}, {"from": "Constant5", "to": "Divide391", "arrows": "to", "label": "(1, 1)", "font": {"align": "middle", "size": 10}, "title": "{\n  \"from\": \"Constant5\",\n  \"to\": \"Divide391\",\n  \"shape\": \"(1, 1)\"\n}", "color": {"color": "#7f8c8d"}}, {"from": "torque_norm", "to": "SampleWindow393", "arrows": "to", "label": "(1, 1)", "font": {"align": "middle", "size": 10}, "title": "{\n  \"from\": \"torque_norm\",\n  \"to\": \"SampleWindow393\",\n  \"shape\": \"(1, 1)\"\n}", "color": {"color": "#7f8c8d"}}, {"from": "Divide391", "to": "Concatenate392", "arrows": "to", "label": "(1, 1)", "font": {"align": "middle", "size": 10}, "title": "{\n  \"from\": \"Divide391\",\n  \"to\": \"Concatenate392\",\n  \"shape\": \"(1, 1)\"\n}", "color": {"color": "#7f8c8d"}}, {"from": "SampleWindow393", "to": "Concatenate392", "arrows": "to", "label": "(1, 1)", "font": {"align": "middle", "size": 10}, "title": "{\n  \"from\": \"SampleWindow393\",\n  \"to\": \"Concatenate392\",\n  \"shape\": \"(1, 1)\"\n}", "color": {"color": "#7f8c8d"}}, {"from": "Concatenate392", "to": "Linear395", "arrows": "to", "label": "(2, 1)", "font": {"align": "middle", "size": 10}, "title": "{\n  \"from\": \"Concatenate392\",\n  \"to\": \"Linear395\",\n  \"shape\": \"(2, 1)\"\n}", "color": {"color": "#7f8c8d"}}, {"from": "Linear395", "to": "Tanh394", "arrows": "to", "label": "(32, 1)", "font": {"align": "middle", "size": 10}, "title": "{\n  \"from\": \"Linear395\",\n  \"to\": \"Tanh394\",\n  \"shape\": \"(32, 1)\"\n}", "color": {"color": "#7f8c8d"}}, {"from": "Tanh394", "to": "Linear397", "arrows": "to", "label": "(32, 1)", "font": {"align": "middle", "size": 10}, "title": "{\n  \"from\": \"Tanh394\",\n  \"to\": \"Linear397\",\n  \"shape\": \"(32, 1)\"\n}", "color": {"color": "#7f8c8d"}}, {"from": "Linear397", "to": "Tanh396", "arrows": "to", "label": "(32, 1)", "font": {"align": "middle", "size": 10}, "title": "{\n  \"from\": \"Linear397\",\n  \"to\": \"Tanh396\",\n  \"shape\": \"(32, 1)\"\n}", "color": {"color": "#7f8c8d"}}, {"from": "Tanh396", "to": "Linear399", "arrows": "to", "label": "(32, 1)", "font": {"align": "middle", "size": 10}, "title": "{\n  \"from\": \"Tanh396\",\n  \"to\": \"Linear399\",\n  \"shape\": \"(32, 1)\"\n}", "color": {"color": "#7f8c8d"}}, {"from": "Linear399", "to": "Tanh398", "arrows": "to", "label": "(32, 1)", "font": {"align": "middle", "size": 10}, "title": "{\n  \"from\": \"Linear399\",\n  \"to\": \"Tanh398\",\n  \"shape\": \"(32, 1)\"\n}", "color": {"color": "#7f8c8d"}}, {"from": "Tanh398", "to": "Linear400", "arrows": "to", "label": "(32, 1)", "font": {"align": "middle", "size": 10}, "title": "{\n  \"from\": \"Tanh398\",\n  \"to\": \"Linear400\",\n  \"shape\": \"(32, 1)\"\n}", "color": {"color": "#7f8c8d"}}, {"from": "Linear400", "to": "Sigmoid401", "arrows": "to", "label": "(6, 1)", "font": {"align": "middle", "size": 10}, "title": "{\n  \"from\": \"Linear400\",\n  \"to\": \"Sigmoid401\",\n  \"shape\": \"(6, 1)\"\n}", "color": {"color": "#7f8c8d"}}, {"from": "Sigmoid401", "to": "u_pred", "arrows": "to", "label": "(6, 1)", "font": {"align": "middle", "size": 10}, "title": "{\n  \"from\": \"Sigmoid401\",\n  \"to\": \"u_pred\",\n  \"shape\": \"(6, 1)\"\n}", "color": {"color": "#7f8c8d"}}, {"from": "u_pred", "to": "__min_nn_lut_W=0.2_3L_32U_tanh_loss", "arrows": "to", "label": "source", "dashes": false, "width": 2, "font": {"align": "middle", "size": 10, "color": "#6c3483"}, "color": {"color": "#8e44ad", "highlight": "#6c3483"}}, {"from": "SampleWindow402", "to": "__min_nn_lut_W=0.2_3L_32U_tanh_loss", "arrows": "to", "label": "target", "dashes": true, "width": 2, "font": {"align": "middle", "size": 10, "color": "#6c3483"}, "color": {"color": "#8e44ad", "highlight": "#6c3483"}}]);
+    const nodeDetails = {"angle": {"class": "Input", "name": "angle", "seq": "()", "time": "1", "dim": "(1,)", "shape": "(1, 1)"}, "SampleWindow389": {"class": "SampleWindow", "name": "SampleWindow389", "seq": "()", "time": "1", "dim": "(1,)", "shape": "(1, 1)", "properties": {"past": 1, "future": 0}}, "Constant3": {"class": "Constant", "name": "Constant3", "seq": "()", "time": "1", "dim": "(1,)", "shape": "(1, 1)", "properties": {"value": [[0.0]], "initializer": null}}, "Subtract390": {"class": "Subtract", "name": "Subtract390", "seq": "()", "time": "1", "dim": "(1,)", "shape": "(1, 1)", "properties": {}}, "Constant5": {"class": "Constant", "name": "Constant5", "seq": "()", "time": "1", "dim": "(1,)", "shape": "(1, 1)", "properties": {"value": [[130.00010681152344]], "initializer": null}}, "Divide391": {"class": "Divide", "name": "Divide391", "seq": "()", "time": "1", "dim": "(1,)", "shape": "(1, 1)", "properties": {}}, "torque_norm": {"class": "Input", "name": "torque_norm", "seq": "()", "time": "1", "dim": "(1,)", "shape": "(1, 1)"}, "SampleWindow393": {"class": "SampleWindow", "name": "SampleWindow393", "seq": "()", "time": "1", "dim": "(1,)", "shape": "(1, 1)", "properties": {"past": 1, "future": 0}}, "Concatenate392": {"class": "Concatenate", "name": "Concatenate392", "seq": "()", "time": "1", "dim": "(2,)", "shape": "(2, 1)", "properties": {"axis": 0}}, "Linear395": {"class": "Linear", "name": "Linear395", "seq": "()", "time": "1", "dim": "(32,)", "shape": "(32, 1)", "properties": {"out_features": 32, "use_bias": true, "initializer": "glorot_uniform", "bias_initializer": "glorot_uniform"}}, "Tanh394": {"class": "Tanh", "name": "Tanh394", "seq": "()", "time": "1", "dim": "(32,)", "shape": "(32, 1)", "properties": {}}, "Linear397": {"class": "Linear", "name": "Linear397", "seq": "()", "time": "1", "dim": "(32,)", "shape": "(32, 1)", "properties": {"out_features": 32, "use_bias": true, "initializer": "glorot_uniform", "bias_initializer": "glorot_uniform"}}, "Tanh396": {"class": "Tanh", "name": "Tanh396", "seq": "()", "time": "1", "dim": "(32,)", "shape": "(32, 1)", "properties": {}}, "Linear399": {"class": "Linear", "name": "Linear399", "seq": "()", "time": "1", "dim": "(32,)", "shape": "(32, 1)", "properties": {"out_features": 32, "use_bias": true, "initializer": "glorot_uniform", "bias_initializer": "glorot_uniform"}}, "Tanh398": {"class": "Tanh", "name": "Tanh398", "seq": "()", "time": "1", "dim": "(32,)", "shape": "(32, 1)", "properties": {}}, "Linear400": {"class": "Linear", "name": "Linear400", "seq": "()", "time": "1", "dim": "(6,)", "shape": "(6, 1)", "properties": {"out_features": 6, "use_bias": true, "initializer": "glorot_uniform", "bias_initializer": "glorot_uniform"}}, "Sigmoid401": {"class": "Sigmoid", "name": "Sigmoid401", "seq": "()", "time": "1", "dim": "(6,)", "shape": "(6, 1)", "properties": {}}, "u_pred": {"class": "Output", "name": "u_pred", "seq": "()", "time": "1", "dim": "(6,)", "shape": "(6, 1)"}, "__min_nn_lut_W=0.2_3L_32U_tanh_loss": {"class": "Minimizer", "name": "nn_lut_W=0.2_3L_32U_tanh_loss", "loss": "mean_squared_error", "source": "u_pred", "target": "SampleWindow402"}, "SampleWindow402": {"class": "SampleWindow", "name": "SampleWindow402", "seq": "()", "time": "1", "dim": "(6,)", "shape": "(6, 1)", "properties": {"past": 1, "future": 0}}};
+    const boundary = null;
+
+    const container = document.getElementById('network');
+    const inspectorContent = document.getElementById('inspectorContent');
+    const data = { nodes, edges };
+
+    let hierarchical = false;
+    const springPhysics = true;
+
+    function layoutOptions() {
+        return {
+            layout: {
+                improvedLayout: !hierarchical,
+                hierarchical: hierarchical
+                    ? {
+                        enabled: true,
+                        direction: 'LR',
+                        sortMethod: 'directed',
+                        nodeSpacing: 110,
+                        levelSeparation: 190,
+                        treeSpacing: 140,
+                        shakeTowards: 'roots'
+                    }
+                    : { enabled: false }
+            },
+            physics: hierarchical ? false : springPhysics,
+            edges: {
+                smooth: hierarchical ? { enabled: true, type: 'cubicBezier',
+                    forceDirection: 'horizontal', roundness: 0.4 } : springPhysics,
+                shadow: hierarchical ? false : springPhysics
+            }
+        };
+    }
+
+    const options = Object.assign({
+        autoResize: true,
+        interaction: {
+            hover: true,
+            tooltipDelay: 80,
+            multiselect: true,
+            navigationButtons: true,
+            keyboard: true
+        },
+        nodes: {
+            borderWidth: 1,
+            shadow: true
+        }
+    }, layoutOptions());
+    options.edges.font = { size: 10, align: "middle" };
+
+    const network = new vis.Network(container, data, options);
+
+    document.getElementById('graphInfo').textContent =
+        nodes.length + ' nodes · ' + edges.length + ' edges';
+
+    function escapeHtml(text) {
+        return String(text)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function formatValue(value) {
+        if (value === null || value === undefined) return "";
+        if (typeof value === "object") {
+            return `<pre style="margin:0; white-space:pre-wrap;">${escapeHtml(JSON.stringify(value, null, 2))}</pre>`;
+        }
+        return escapeHtml(String(value));
+    }
+
+    function focusNode(nodeId) {
+        if (!nodes.get(nodeId)) return;
+        network.selectNodes([nodeId]);
+        network.focus(nodeId, { scale: 1.1, animation: true });
+        renderInspector(nodeId);
+    }
+
+    function portRows(rows) {
+        return rows.map(row => `
+            <tr>
+                <td><a href="#" data-node="${escapeHtml(row.node)}">${escapeHtml(row.node)}</a></td>
+                <td>${escapeHtml(row.text)}</td>
+                <td class="role">${escapeHtml(row.role || "")}</td>
+            </tr>`).join("");
+    }
+
+    function portsHtml(ports) {
+        let html = "";
+        const detail = Object.entries(ports.detail || {})
+            .map(([key, value]) => `${escapeHtml(key)}: ${escapeHtml(String(value))}`)
+            .join(" · ");
+        html += `<div class="ports-title">${escapeHtml(ports.block)}${detail ? " — " + detail : ""}</div>`;
+
+        if (ports.inputs.length) {
+            html += '<div class="ports-title">Inputs</div><table class="ports">' +
+                portRows(ports.inputs.map(p => (
+                    { node: p.body, text: "\u2190 " + p.outer, role: p.role }
+                ))) + "</table>";
+        }
+        if (ports.feedback.length) {
+            html += '<div class="ports-title">Feedback</div><table class="ports">' +
+                portRows(ports.feedback.map(p => (
+                    { node: p.from, text: "\u2192 " + p.to, role: "closed" }
+                ))) + "</table>";
+        }
+        if (ports.outputs.length) {
+            html += '<div class="ports-title">Outputs</div><table class="ports">' +
+                portRows(ports.outputs.map(p => (
+                    { node: p.body, text: "\u2192 " + p.outer, role: "" }
+                ))) + "</table>";
+        }
+        return html;
+    }
+
+    function bindPortLinks(root) {
+        root.querySelectorAll('a[data-node]').forEach(link => {
+            link.addEventListener('click', event => {
+                event.preventDefault();
+                focusNode(link.getAttribute('data-node'));
+            });
+        });
+    }
+
+    if (boundary) {
+        const el = document.getElementById('boundaryContent');
+        el.innerHTML =
+            `<div class="empty">Body of <b>${escapeHtml(boundary.node)}</b> in ` +
+            `<a href="${escapeHtml(boundary.parent_rel)}">${escapeHtml(boundary.parent)}</a>.</div>` +
+            portsHtml(boundary.ports);
+        bindPortLinks(el);
+    }
+
+    function renderInspector(nodeId) {
+        const details = nodeDetails[nodeId];
+        const n = nodes.get(nodeId);
+
+        if (!details) {
+            inspectorContent.innerHTML = '<div class="empty">No details available for this node.</div>';
+            return;
+        }
+
+        const rows = Object.entries(details)
+            .filter(([key]) => key !== "block")
+            .map(([key, value]) => {
+            return `
+            <tr>
+                <th>${escapeHtml(key)}</th>
+                <td>${formatValue(value)}</td>
+            </tr>
+            `;
+        }).join("");
+
+        let extra = "";
+        if (n && n.url) {
+            extra = `<a class="open-link" href="${escapeHtml(n.url)}" target="_self">Open nested model</a>`;
+        }
+
+        inspectorContent.innerHTML = `
+            <table class="attr-table">
+                <tbody>${rows}</tbody>
+            </table>
+            ${details.block ? portsHtml(details.block) : ""}
+            ${extra}
+        `;
+        inspectorContent.querySelectorAll('a[data-node]').forEach(link => {
+            link.addEventListener('click', event => {
+                event.preventDefault();
+                focusNode(link.getAttribute('data-node'));
+            });
+        });
+    }
+
+    network.on("click", function(params) {
+        if (!params.nodes || params.nodes.length === 0) return;
+        const nodeId = params.nodes[0];
+        renderInspector(nodeId);
+    });
+
+    network.on("doubleClick", function(params) {
+        if (!params.nodes || params.nodes.length === 0) return;
+        const nodeId = params.nodes[0];
+        const n = nodes.get(nodeId);
+        if (n && n.url) {
+            const target = "_self";
+            if (target === "_blank") {
+                window.open(n.url, "_blank");
+            } else {
+                window.location.href = n.url;
+            }
+        }
+    });
+
+    const searchBox = document.getElementById("search");
+    const searchInfo = document.getElementById("searchInfo");
+    searchBox.addEventListener("input", () => {
+        const query = searchBox.value.trim().toLowerCase();
+        if (!query) {
+            searchInfo.textContent = "";
+            network.unselectAll();
+            return;
+        }
+        const matches = nodes.getIds().filter(
+            id => String(id).toLowerCase().includes(query));
+        searchInfo.textContent = matches.length + (matches.length === 1 ? " match" : " matches");
+        if (matches.length) {
+            network.selectNodes(matches);
+            network.fit({ nodes: matches, animation: true });
+            if (matches.length === 1) renderInspector(matches[0]);
+        }
+    });
+
+    const layoutBtn = document.getElementById("layoutBtn");
+    function refreshLayoutBtn() {
+        layoutBtn.textContent = hierarchical ? "Layout: hierarchical" : "Layout: force";
+    }
+    refreshLayoutBtn();
+    layoutBtn.addEventListener("click", () => {
+        hierarchical = !hierarchical;
+        refreshLayoutBtn();
+        const next = layoutOptions();
+        next.edges.font = { size: 10, align: "middle" };
+        network.setOptions(next);
+        network.fit({ animation: true });
+    });
+
+    const backBtn = document.getElementById("backBtn");
+    if (backBtn) {
+        backBtn.addEventListener("click", () => {
+            const parentUrl = null;
+            if (window.history.length > 1) {
+                window.history.back();
+            } else {
+                window.location.href = parentUrl;
+            }
+        });
+    }
+</script>
+</body>
+</html>

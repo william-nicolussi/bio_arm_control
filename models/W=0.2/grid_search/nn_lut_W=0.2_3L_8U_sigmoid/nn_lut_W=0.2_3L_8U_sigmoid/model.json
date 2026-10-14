@@ -1,0 +1,262 @@
+{
+  "format": "nnodely",
+  "version": 2,
+  "model": {
+    "name": "nn_lut_W=0.2_3L_8U_sigmoid",
+    "roll": null
+  },
+  "nodes": [
+    {
+      "id": "node_0",
+      "class_name": "Input",
+      "config": {
+        "name": "angle",
+        "dim": [
+          1
+        ],
+        "time": 1,
+        "seq": [],
+        "past": 1,
+        "future": 0
+      },
+      "preds": []
+    },
+    {
+      "id": "node_1",
+      "class_name": "SampleWindow",
+      "config": {
+        "name": "SampleWindow845",
+        "past": 1,
+        "future": 0
+      },
+      "preds": [
+        "node_0"
+      ],
+      "layer": 0
+    },
+    {
+      "id": "node_2",
+      "class_name": "Constant",
+      "config": {
+        "name": "Constant3",
+        "dim": [
+          1
+        ],
+        "time": 1,
+        "seq": [],
+        "value": [
+          [
+            0.0
+          ]
+        ]
+      },
+      "preds": [],
+      "layer": 1
+    },
+    {
+      "id": "node_3",
+      "class_name": "Subtract",
+      "config": {
+        "name": "Subtract846"
+      },
+      "preds": [
+        "node_1",
+        "node_2"
+      ],
+      "layer": 2
+    },
+    {
+      "id": "node_4",
+      "class_name": "Constant",
+      "config": {
+        "name": "Constant5",
+        "dim": [
+          1
+        ],
+        "time": 1,
+        "seq": [],
+        "value": [
+          [
+            130.00010681152344
+          ]
+        ]
+      },
+      "preds": [],
+      "layer": 3
+    },
+    {
+      "id": "node_5",
+      "class_name": "Divide",
+      "config": {
+        "name": "Divide847"
+      },
+      "preds": [
+        "node_3",
+        "node_4"
+      ],
+      "layer": 4
+    },
+    {
+      "id": "node_6",
+      "class_name": "Input",
+      "config": {
+        "name": "torque_norm",
+        "dim": [
+          1
+        ],
+        "time": 1,
+        "seq": [],
+        "past": 1,
+        "future": 0
+      },
+      "preds": []
+    },
+    {
+      "id": "node_7",
+      "class_name": "SampleWindow",
+      "config": {
+        "name": "SampleWindow849",
+        "past": 1,
+        "future": 0
+      },
+      "preds": [
+        "node_6"
+      ],
+      "layer": 5
+    },
+    {
+      "id": "node_8",
+      "class_name": "Concatenate",
+      "config": {
+        "name": "Concatenate848",
+        "axis": 0
+      },
+      "preds": [
+        "node_5",
+        "node_7"
+      ],
+      "layer": 6
+    },
+    {
+      "id": "node_9",
+      "class_name": "Linear",
+      "config": {
+        "name": "Linear851",
+        "out_features": 8,
+        "use_bias": true,
+        "initializer": "glorot_uniform",
+        "bias_initializer": "glorot_uniform"
+      },
+      "preds": [
+        "node_8"
+      ],
+      "layer": 7
+    },
+    {
+      "id": "node_10",
+      "class_name": "Sigmoid",
+      "config": {
+        "name": "Sigmoid850"
+      },
+      "preds": [
+        "node_9"
+      ],
+      "layer": 8
+    },
+    {
+      "id": "node_11",
+      "class_name": "Linear",
+      "config": {
+        "name": "Linear853",
+        "out_features": 8,
+        "use_bias": true,
+        "initializer": "glorot_uniform",
+        "bias_initializer": "glorot_uniform"
+      },
+      "preds": [
+        "node_10"
+      ],
+      "layer": 9
+    },
+    {
+      "id": "node_12",
+      "class_name": "Sigmoid",
+      "config": {
+        "name": "Sigmoid852"
+      },
+      "preds": [
+        "node_11"
+      ],
+      "layer": 10
+    },
+    {
+      "id": "node_13",
+      "class_name": "Linear",
+      "config": {
+        "name": "Linear855",
+        "out_features": 8,
+        "use_bias": true,
+        "initializer": "glorot_uniform",
+        "bias_initializer": "glorot_uniform"
+      },
+      "preds": [
+        "node_12"
+      ],
+      "layer": 11
+    },
+    {
+      "id": "node_14",
+      "class_name": "Sigmoid",
+      "config": {
+        "name": "Sigmoid854"
+      },
+      "preds": [
+        "node_13"
+      ],
+      "layer": 12
+    },
+    {
+      "id": "node_15",
+      "class_name": "Linear",
+      "config": {
+        "name": "Linear856",
+        "out_features": 6,
+        "use_bias": true,
+        "initializer": "glorot_uniform",
+        "bias_initializer": "glorot_uniform"
+      },
+      "preds": [
+        "node_14"
+      ],
+      "layer": 13
+    },
+    {
+      "id": "node_16",
+      "class_name": "Sigmoid",
+      "config": {
+        "name": "Sigmoid857"
+      },
+      "preds": [
+        "node_15"
+      ],
+      "layer": 14
+    },
+    {
+      "id": "node_17",
+      "class_name": "Output",
+      "config": {
+        "name": "u_pred"
+      },
+      "preds": [
+        "node_16"
+      ]
+    }
+  ],
+  "inputs": [
+    "node_0",
+    "node_6"
+  ],
+  "outputs": [
+    "node_17"
+  ]
+}
