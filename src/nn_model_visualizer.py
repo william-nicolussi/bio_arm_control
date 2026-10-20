@@ -18,6 +18,16 @@ def return_all_json_path_in_this_folder(folder_path: str) -> list:
                 json_paths.append(normalized_path)   
     return json_paths
 
+def return_all_keras_path_in_this_folder(folder_path: str) -> list:
+    keras_paths = []
+    for root, dirs, files in os.walk(folder_path):
+        for file in files:
+            if file.endswith(".keras"):
+                full_path = os.path.join(root, file)
+                normalized_path = full_path.replace('\\', '/') # Windows accepts only '/'
+                keras_paths.append(normalized_path)   
+    return keras_paths
+
 def print_all_path_in_list(models_to_visualize: list) -> None:
     print("[")
     for model in models_to_visualize:
