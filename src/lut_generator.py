@@ -13,14 +13,15 @@ import muscle_co_contraction as mcc
 
 
 class LUT_generator:
-    def __init__(self, W_values, torque_steps: int = mcc.TORQUE_STEPS):
+    def __init__(self, W_values, torque_steps: int = mcc.TORQUE_STEPS, torque_norm=None):
         self.W_values = np.atleast_1d(np.asarray(W_values, dtype=float))
         self.torque_steps = torque_steps
+        self.torque_norm = torque_norm  # optional non-uniform grid (overrides torque_steps)
         self.comb_lut = None
 
     def generate(self) -> xr.Dataset:
         # dims (W, angle, torque_norm, activation_idx); vars activation_value, torque, torque_min, torque_max
-        self.comb_lut = mcc.build_comb_lut(self.W_values, self.torque_steps)
+        self.comb_lut = mcc.build_comb_lut(self.W_values, self.torque_steps, self.torque_norm)
         return self.comb_lut
 
     def save(self, nc_file_path: str) -> None:
@@ -31,5 +32,5 @@ class LUT_generator:
         temp_file = nc_file_path + ".tmp"
         self.comb_lut.to_netcdf(temp_file)
         os.replace(temp_file, nc_file_path)
-
+ 
         print(f"File NC saved in: {nc_file_path}")

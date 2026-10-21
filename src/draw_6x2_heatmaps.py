@@ -12,7 +12,9 @@ def draw_heatmaps(
     title_prefix: str = 'u',
     marker_color: str = 'black',
     center_zero: bool = False,
-    save_path: str = None
+    save_path: str = None,
+    show: bool = True,
+    suptitle: str = None
 ) -> None:
     muscle_names = ["TRIlong", "TRIlat", "TRImed", "BIClong", "BICshort", "BRA"]
     
@@ -60,6 +62,9 @@ def draw_heatmaps(
         axes[i].set_xlabel('Angle')
         axes[i].set_ylabel('Torque Norm')
 
+    if suptitle is not None:
+        fig.suptitle(suptitle, fontsize=14, fontweight='bold')
+
     cbar = fig.colorbar(im, ax=axes, orientation='vertical', shrink=0.8, pad=0.02)
     cbar.ax.tick_params(labelsize=10)
 
@@ -67,10 +72,12 @@ def draw_heatmaps(
         folder = os.path.dirname(save_path)
         if folder:
             os.makedirs(folder, exist_ok=True)
-        plt.savefig(save_path)
+        fig.savefig(save_path, dpi=150)
         print(f"Heatmap saved in: {save_path}")
 
-    plt.show()
+    if show:
+        plt.show()
+    plt.close(fig)  # free memory (important in a grid search with many plots)
 
     if visualize_square:
         print(f"Valori per (Angle~{closest_angle:.2f}, Torque~{closest_tau:.2f})")
