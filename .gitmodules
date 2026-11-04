@@ -1,0 +1,3 @@
+[submodule "fr_fr_byophysical_arm"]
+	path = fr_fr_byophysical_arm
+	url = https://github.com/william-nicolussi/byophysical-arm.git
