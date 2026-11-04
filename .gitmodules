@@ -1,3 +1,5 @@
 [submodule "fr_fr_byophysical_arm"]
 	path = fr_fr_biophysical_arm
 	url = https://github.com/william-nicolussi/biophysical-arm.git
+[submodule "fr_fr_biophysical_arm"]
+	url = https://github.com/william-nicolussi/biophysical-arm.git
