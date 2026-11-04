@@ -1,0 +1,76 @@
+{
+    "model_name": "model_W_all",
+    "W_values": [
+        0.0,
+        0.1,
+        0.2,
+        0.3,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.8,
+        0.9,
+        1.0
+    ],
+    "num_rows": 12617,
+    "hyperparameters": {
+        "num_parameters": 158,
+        "num_hidden_layers": 2,
+        "hidden_units": 8,
+        "activation": "relu",
+        "output_activation": "linear",
+        "seed": 42,
+        "epochs": 50,
+        "epochs_run": 50,
+        "batch_size": 64,
+        "learning_rate": 0.001
+    },
+    "train_metrics": {
+        "mse": 0.002147856168448925,
+        "rmse": 0.04634496942162514,
+        "mae": 0.03246418386697769,
+        "max_error": 0.42429760098457336,
+        "bias": 0.0021243090741336346,
+        "std_error": 0.04629625752568245,
+        "nrmse_pct": 4.634497165679932,
+        "fit_pct": 84.89550018310547,
+        "r2": 0.9771854281425476,
+        "correlation": 0.9887573109657587,
+        "non_finite": 0,
+        "per_muscle": {
+            "rmse": [
+                0.04181939363479614,
+                0.04307379946112633,
+                0.04651818796992302,
+                0.043134257197380066,
+                0.05212387070059776,
+                0.050413187593221664
+            ],
+            "max_error": [
+                0.2680460214614868,
+                0.23915748298168182,
+                0.2833331227302551,
+                0.3107103705406189,
+                0.3633028268814087,
+                0.42429760098457336
+            ],
+            "r2": [
+                0.9843555092811584,
+                0.9777770042419434,
+                0.9711822271347046,
+                0.9837204813957214,
+                0.9633445143699646,
+                0.9756065607070923
+            ]
+        }
+    },
+    "validation_metrics": null,
+    "keras_version": "3.13.2",
+    "keras_backend": "torch",
+    "files": {
+        "model": "model_W_all.keras",
+        "history": "model_W_all_history.csv",
+        "predictions": "model_W_all_predictions.csv"
+    }
+}

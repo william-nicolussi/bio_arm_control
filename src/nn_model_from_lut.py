@@ -4,62 +4,28 @@ import os
 import keras
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 
-from src.draw_6x2_heatmaps import draw_heatmaps
+from src import nn_plots
 from src.lut import LUT
 from src.lut_preprocessing import LUT_preprocessing
+from src.nn_metrics import N_OUTPUTS, compute_metrics
+from src.nn_validator import torque_to_norm
 
-def compute_metrics(u_target: np.ndarray, u_pred: np.ndarray) -> dict:
-    """Error metrics between target and prediction, both (N, 6). Same definitions as nnodely."""
-    finite = np.isfinite(u_pred).all(axis=1)
-    y, p = u_target[finite], u_pred[finite]
-    err = p - y
-
-    mse = np.mean(err ** 2)
-    rmse = np.sqrt(mse)
-    ss_tot = np.sum((y - y.mean()) ** 2)
-    r2 = 1.0 - np.sum(err ** 2) / ss_tot
-
-    # per muscle (column by column)
-    mse_m = np.mean(err ** 2, axis=0)
-    r2_m = 1.0 - np.sum(err ** 2, axis=0) / np.sum((y - y.mean(axis=0)) ** 2, axis=0)
-
-    return {
-        "mse": float(mse),
-        "rmse": float(rmse),
-        "mae": float(np.mean(np.abs(err))),
-        "max_error": float(np.max(np.abs(err))),
-        "bias": float(np.mean(err)),
-        "std_error": float(np.std(err)),
-        "nrmse_pct": float(100.0 * rmse / (y.max() - y.min())),
-        "fit_pct": float(100.0 * (1.0 - np.sqrt(1.0 - r2))),
-        "r2": float(r2),
-        "correlation": float(np.corrcoef(y.ravel(), p.ravel())[0, 1]),
-        "non_finite": int(np.sum(~finite)),
-        "per_muscle": {
-            "rmse": np.sqrt(mse_m).tolist(),
-            "max_error": np.max(np.abs(err), axis=0).tolist(),
-            "r2": r2_m.tolist(),
-        },
-    }
-
-N_OUTPUTS = 6
 ACTIVATION_MAP = {
     "relu": keras.activations.relu,
     "gelu": keras.activations.gelu,
     "tanh": keras.activations.tanh,
     "silu": keras.activations.silu,
-    "sigmoid": keras.activations.sigmoid,
-}
+    "sigmoid": keras.activations.sigmoid
+    }
 
 OUTPUT_ACTIVATION_MAP = {
     "linear": keras.activations.linear,  # u_raw = W·h + b
-    "sigmoid": keras.activations.sigmoid,
-}
+    "sigmoid": keras.activations.sigmoid
+    }
 
 class NN_model_from_LUT:
-  
+
     def __init__(self, model_name: str, this_LUT: LUT):
         self.model_name = model_name
         self.this_LUT = this_LUT
@@ -81,10 +47,19 @@ class NN_model_from_LUT:
 
         # training
         self.history = None
+        self.train_metrics = None
         self.validation_metrics = None
         self.epochs = None
         self.batch_size = None
         self.learning_rate = None
+        self.lr_factor = None
+        self.lr_patience = None
+        self.min_lr = None
+
+    @property
+    def label(self) -> str:
+        """Label used in legends and titles of the plots."""
+        return f"{self.model_name} ({self.num_parameters} param)"
 
     def define_structure(self,
                          num_hidden_layers: int,
@@ -94,13 +69,13 @@ class NN_model_from_LUT:
                          seed: int = 42,
                          show_table: bool = False,
                          save_path_plots: str = None
-                         ) -> None:  
+                         ) -> None:
         # errors wrong activation spell
         if activation not in ACTIVATION_MAP:
             raise ValueError(f"activation must be one of {list(ACTIVATION_MAP)}, got '{activation}'")
         if output_activation not in OUTPUT_ACTIVATION_MAP:
             raise ValueError(f"output_activation must be one of {list(OUTPUT_ACTIVATION_MAP)}, got '{output_activation}'")
-                      
+
         self.num_hidden_layers = num_hidden_layers
         self.hidden_units = hidden_units
         self.activation_name = activation.lower()
@@ -116,7 +91,7 @@ class NN_model_from_LUT:
 
         # pre-processing: constants read once from the LUT and saved inside the model
         preprocessing = LUT_preprocessing.from_lut(self.this_LUT, name="preprocessing")
-        features, _ = preprocessing([W_in, angle_in, torque_in]) 
+        features, _ = preprocessing([W_in, angle_in, torque_in])
 
         # hidden layers
         act_fn = ACTIVATION_MAP[self.activation_name]
@@ -139,20 +114,26 @@ class NN_model_from_LUT:
         if show_table or (save_path_plots is not None):
             self.plot_structure(show=show_table, save_path=save_path_plots)
 
-
     def train(self,
               epochs: int,
               batch_size: int,
               lr: float,
-              patience: int = 15,
+              loss: str = "mse",
+              patience: int = 50,
               min_delta: float = 0,
+              lr_factor: float = 0.5,
+              lr_patience: int = 20,
+              min_lr: float = 1e-6,
               verbose: int = 2,
               show_plots: bool = False,
               save_path_plots: str = None) -> None:
-        
+
         self.epochs = epochs
         self.batch_size = batch_size
         self.learning_rate = lr
+        self.lr_factor = lr_factor
+        self.lr_patience = lr_patience
+        self.min_lr = min_lr
 
         # load data (physical values -> the model normalizes them itself)
         x, y = self._get_xy(self.this_LUT)
@@ -160,10 +141,11 @@ class NN_model_from_LUT:
         print(f"W values: {np.unique(self.this_LUT.W)}")
         print(f"Training for at most {self.epochs} epochs...\n")
 
+        """
         # loss on u_raw (no clip): the gradient never vanishes
         self.train_model.compile(
             optimizer=keras.optimizers.Adam(learning_rate=lr),
-            loss="mse",
+            loss=loss,
             metrics=["mae"],
         )
 
@@ -175,14 +157,50 @@ class NN_model_from_LUT:
             restore_best_weights=True,
         )
 
+        # lr scheduler: halve the lr after `lr_patience` epochs without improvement
+        reduce_lr = keras.callbacks.ReduceLROnPlateau(
+            monitor="loss",
+            factor=self.lr_factor,
+            patience=self.lr_patience,
+            min_lr=self.min_lr,
+            min_delta=min_delta,
+            verbose=verbose,
+        )
+        
         history = self.train_model.fit(
             x, y,
             epochs=epochs,
             batch_size=batch_size,
             shuffle=True,          # rows are sorted by W: mix them in every epoch
-            callbacks=[early_stop],
+            callbacks=[reduce_lr, early_stop],
             verbose=verbose,
         )
+        """
+
+        steps_per_epoch = int(np.ceil(len(y) / batch_size))
+        schedule = keras.optimizers.schedules.CosineDecay(
+            initial_learning_rate=lr,
+            decay_steps=epochs * steps_per_epoch,
+            alpha=1e-3,                 # lr finale = lr * 1e-3 (es. 1e-3 -> 1e-6)
+        )
+
+        self.train_model.compile(
+            optimizer=keras.optimizers.Adam(learning_rate=schedule),
+            loss=loss,
+            metrics=["mae"],
+            #jit_compile=False,
+        )
+
+        history = self.train_model.fit(
+            x, y,
+            epochs=epochs,
+            batch_size=batch_size,
+            shuffle=True,
+            verbose=verbose,
+        )
+        # FINE TENTATIVO 2
+
+
         self.history = {k: [float(v) for v in values] for k, values in history.history.items()}
         print(f"\nTraining finished after {len(self.history['loss'])} epochs "
               f"(best loss {min(self.history['loss']):.3e}).")
@@ -197,9 +215,6 @@ class NN_model_from_LUT:
         if show_plots or (save_path_plots is not None):
             self.plot_history(show=show_plots, save_path=save_path_plots)
             self.plot_predictions(show=show_plots, save_path=save_path_plots)
-            #for W in np.unique(self.this_LUT.W):
-                #self.plot_predictions(considered_W=float(W), show=show_plots, save_path=f"{save_path_plots}/weights")
-            
 
     def _get_xy(self, lut: LUT):
         """Inputs (dict of physical values) and targets of a loaded LUT, in the format of Keras."""
@@ -212,7 +227,7 @@ class NN_model_from_LUT:
         }
         y = lut.activations.astype("float32")
         return x, y
-        
+
     def export(self, path_export: str) -> None:
         os.makedirs(path_export, exist_ok=True)
         base = os.path.join(path_export, self.model_name)
@@ -222,9 +237,7 @@ class NN_model_from_LUT:
         print(f"Model Keras saved in: {base}.keras")
 
         # 2. history: one row per epoch
-        history_df = pd.DataFrame(self.history)
-        history_df.insert(0, "epoch", np.arange(1, len(history_df) + 1))
-        history_df.to_csv(f"{base}_history.csv", index=False)
+        self.history_table().to_csv(f"{base}_history.csv", index=False)
         print(f"History saved in: {base}_history.csv")
 
         # 3. predictions: one row per LUT point (u_target vs u_NN, for MATLAB)
@@ -248,6 +261,10 @@ class NN_model_from_LUT:
                 "epochs_run": len(self.history["loss"]),
                 "batch_size": self.batch_size,
                 "learning_rate": self.learning_rate,
+                "lr_factor": self.lr_factor,
+                "lr_patience": self.lr_patience,
+                "min_lr": self.min_lr,
+                "final_learning_rate": self.history.get("learning_rate", [None])[-1],
             },
             "train_metrics": self.train_metrics,
             "validation_metrics": self.validation_metrics,
@@ -263,10 +280,19 @@ class NN_model_from_LUT:
             json.dump(metadata, f, indent=4)
         print(f"Metadata and metrics saved in: {base}_metadata.json")
 
+    def history_table(self) -> pd.DataFrame:
+        """One row per epoch: epoch, loss, mae (same format as the exported CSV)."""
+        if self.history is None:
+            raise RuntimeError("No training history: call train() first")
+        df = pd.DataFrame(self.history)
+        df.insert(0, "epoch", np.arange(1, len(df) + 1))
+        return df
 
     def predictions_table(self, lut: LUT = None) -> pd.DataFrame:
-        """One row per LUT point: inputs, u_target, u_pred (with the clip) and error = u_pred - u_target."""
-        lut = lut or self.this_LUT
+        """One row per LUT point: inputs, u_target, u_raw, u_pred (with the clip) and
+        error = u_pred - u_target."""
+        if lut is None:
+            lut = self.this_LUT
         x, y = self._get_xy(lut)
         u_pred = keras.ops.convert_to_numpy(self.this_model(x, training=False))
         u_raw = keras.ops.convert_to_numpy(self.train_model(x, training=False))
@@ -287,25 +313,6 @@ class NN_model_from_LUT:
             df[f"error_{i}"] = u_pred[:, i] - y[:, i]
         return df
 
-    def plot_predictions(self, considered_W: float = None, show: bool = False, save_path: str = None) -> None:
-        """u_pred vs u_target, one figure per plot: time series, error, parity, error histogram."""
-        from src.nn_plots import plot_predictions as _plot_predictions  # qui dentro: evita l'import circolare
-
-        df = self.predictions_table()
-        if considered_W is not None:
-            df = df[np.isclose(df["W"], considered_W)].reset_index(drop=True)
-            if df.empty:
-                raise ValueError(f"W={considered_W} not found. Available: {np.unique(self.this_LUT.W)}")
-
-        y = df[[f"u_target_{i}" for i in range(N_OUTPUTS)]].values
-        p = df[[f"u_pred_{i}" for i in range(N_OUTPUTS)]].values
-        W_text = "all W" if considered_W is None else f"W={considered_W:g}"
-        W_tag = "all" if considered_W is None else f"W_{considered_W:g}"
-
-        _plot_predictions(y, p, title=f"{self.model_name} ({W_text})",
-                          file_prefix=f"{self.model_name}_predictions_{W_tag}",
-                          save_path=save_path, show=show)
-
     def predict(self, W, angle, torque) -> np.ndarray:
         """u(0...5) for physical inputs (scalars or arrays of the same length). Returns (N, 6)."""
         if self.this_model is None:
@@ -315,27 +322,44 @@ class NN_model_from_LUT:
         x = {"W": W.reshape(-1, 1), "angle": angle.reshape(-1, 1), "torque": torque.reshape(-1, 1)}
         return keras.ops.convert_to_numpy(self.this_model(x, training=False))
 
+    # ----------------------------------------------------------------- plots
+
+    @staticmethod
+    def _W_tag(considered_W) -> str:
+        return "all" if considered_W is None else f"W_{considered_W:g}"
+
     def plot_history(self, show: bool = False, save_path: str = None) -> None:
-        if self.history is None:
-            raise RuntimeError("No training history: call train() first")
+        nn_plots.plot_history({self.label: self.history_table()}, metric="loss",
+                              title=f"{self.model_name}: training loss",
+                              save_path=save_path, file_name=f"{self.model_name}_loss", show=show)
 
-        fig, ax = plt.subplots(figsize=(8, 5))
-        ax.semilogy(self.history["loss"], label="loss (MSE)")
-        ax.set_xlabel("Epoch")
-        ax.set_ylabel("MSE")
-        ax.set_title(f"{self.model_name}: training loss")
-        ax.grid(True, which="both", linestyle="--", alpha=0.5)
-        ax.legend()
-        fig.tight_layout()
+    def plot_predictions(self, considered_W: float = None, angle_range: tuple = None,
+                         torque_norm_range: tuple = None, lut: LUT = None,
+                         show: bool = False, save_path: str = None) -> None:
+        """Series, error, parity and error histogram of u_pred vs u_target.
+        Files: {model}_predictions_{all | W_x}_{series | error | parity | hist}.png"""
+        df = self.predictions_table(lut)
+        if considered_W is not None and not np.isclose(df["W"], considered_W).any():
+            raise ValueError(f"W={considered_W} not found. Available: {np.unique(df['W'])}")
 
-        if save_path is not None:
-            os.makedirs(save_path, exist_ok=True)
-            file_path = os.path.join(save_path, f"{self.model_name}_loss.png")
-            fig.savefig(file_path, dpi=150)
-            print(f"Loss plot saved in: {file_path}")
-        if show:
-            plt.show()
-        plt.close(fig)
+        frames = {self.label: df}
+        filters = (considered_W, angle_range, torque_norm_range)
+        prefix = f"{self.model_name}_predictions_{self._W_tag(considered_W)}"
+        common = dict(save_path=save_path, show=show)
+
+        nn_plots.plot_series(frames, *filters, file_name=f"{prefix}_series", **common)
+        nn_plots.plot_series(frames, *filters, error=True, file_name=f"{prefix}_error", **common)
+        nn_plots.plot_parity(frames, *filters, file_name=f"{prefix}_parity", **common)
+        nn_plots.plot_error_hist(frames, *filters, file_name=f"{prefix}_hist", **common)
+
+    def plot_raw_vs_pred(self, considered_W: float = None, angle_range: tuple = None,
+                         torque_norm_range: tuple = None, lut: LUT = None,
+                         show: bool = False, save_path: str = None) -> None:
+        """u_raw (before the clip) and u_pred. File: {model}_predictions_{all | W_x}_u_raw_u_pred.png"""
+        nn_plots.plot_raw_vs_pred(
+            {self.label: self.predictions_table(lut)}, considered_W, angle_range, torque_norm_range,
+            file_name=f"{self.model_name}_predictions_{self._W_tag(considered_W)}_u_raw_u_pred",
+            save_path=save_path, show=show)
 
     def plot_structure(self, show: bool = False, save_path: str = None) -> None:
         if self.this_model is None:
@@ -353,7 +377,7 @@ class NN_model_from_LUT:
                 self.this_model.summary(print_fn=lambda line, **kwargs: f.write(line + "\n"))
             print(f"Architecture summary saved in: {summary_path}")
 
-            # graph 
+            # graph
             file_path = os.path.join(save_path, f"{self.model_name}_graph.png")
             try:
                 keras.utils.plot_model(self.this_model, to_file=file_path, show_shapes=True,
@@ -364,63 +388,39 @@ class NN_model_from_LUT:
                 print(f"Architecture plot not saved: {e}")
 
     def plot_heatmaps(self, considered_W: float, angle_req: float = None, torque_req: float = None,
-                      lut: LUT = None, show: bool = True, save_path: str = None) -> None:
+                      lut: LUT = None, show: bool = True, save_path: str = None) -> dict:
         """Heatmaps of u_pred(angle, torque_norm) for one W. torque_req in Nm."""
-        self._draw_nn_heatmaps("u_pred", considered_W, angle_req, torque_req, lut, show, save_path)
+        return self._draw_nn_heatmaps("u_pred", considered_W, angle_req, torque_req, lut, show, save_path)
 
     def plot_error_heatmaps(self, considered_W: float, angle_req: float = None, torque_req: float = None,
-                            lut: LUT = None, show: bool = True, save_path: str = None) -> None:
+                            lut: LUT = None, show: bool = True, save_path: str = None) -> dict:
         """Heatmaps of error = u_pred - u_target for one W (red: prediction too high). torque_req in Nm."""
-        self._draw_nn_heatmaps("error", considered_W, angle_req, torque_req, lut, show, save_path)
+        return self._draw_nn_heatmaps("error", considered_W, angle_req, torque_req, lut, show, save_path)
 
-    def _draw_nn_heatmaps(self, kind: str, considered_W: float, angle_req, torque_req,
-                          lut: LUT, show: bool, save_path: str) -> None:
-        lut = lut or self.this_LUT
+    def _draw_nn_heatmaps(self, value: str, considered_W: float, angle_req, torque_req,
+                          lut: LUT, show: bool, save_path: str) -> dict:
+        if lut is None:
+            lut = self.this_LUT
         df = self.predictions_table(lut)
-
-        # one W only: the heatmap is a function of (angle, torque_norm)
-        df = df[np.isclose(df["W"], considered_W)].reset_index(drop=True)
-        if df.empty:
+        if not np.isclose(df["W"], considered_W).any():
             raise ValueError(f"W={considered_W} not found. Available: {np.unique(lut.W)}")
-
-        # DataFrame in the format of draw_heatmaps: angle, torque_norm, columns 0...5
-        prefix = "u_pred" if kind == "u_pred" else "error"
-        df_plot = df[["angle", "torque_norm"]].copy()
-        for i in range(N_OUTPUTS):
-            df_plot[i] = df[f"{prefix}_{i}"]
 
         # requested point: torque in Nm -> torque_norm at that angle (as the pre-processing does)
         tau_req = None
         if angle_req is not None and torque_req is not None:
-            angles = np.unique(lut.angle)
-            t_min = np.interp(angle_req, angles, lut.torque_min)
-            t_max = np.interp(angle_req, angles, lut.torque_max)
-            tau_req = (torque_req - t_min) / (t_max - t_min)
+            tau_req, t_min, t_max = torque_to_norm(lut, angle_req, torque_req)
             if not 0.0 <= tau_req <= 1.0:
                 print(f"Torque {torque_req} Nm is outside [{t_min:.2f}, {t_max:.2f}] Nm at {angle_req} deg: "
                       f"no marker")
+                tau_req = None
             else:
                 # the heatmap shows the nearest grid point; the network gives the exact value
                 u_exact = self.predict(considered_W, angle_req, torque_req)[0]
                 print(f"NN prediction at exactly (W={considered_W:g}, angle={angle_req}, torque={torque_req} Nm, "
                       f"torque_norm={tau_req:.3f}): " + ", ".join(f"{v:.4f}" for v in u_exact))
 
-        file_path = None
-        if save_path is not None:
-            file_path = os.path.join(save_path, f"{self.model_name}_{kind}_heatmaps_W_{considered_W:g}.png")
-
-        if kind == "u_pred":
-            draw_heatmaps(df=df_plot, angle_min=lut.angle_min, angle_max=lut.angle_max,
-                          angle_req=angle_req, tau_req=tau_req,
-                          cmap="viridis", title_prefix="u_pred",
-                          marker_color="red", center_zero=False,
-                          save_path=file_path, show=show,
-                          suptitle=f"{self.model_name}: u_pred, W = {considered_W:g}")
-        else:
-            draw_heatmaps(df=df_plot, angle_min=lut.angle_min, angle_max=lut.angle_max,
-                          angle_req=angle_req, tau_req=tau_req,
-                          cmap="bwr",  # blue < 0 (too low), white = 0, red > 0 (too high)
-                          title_prefix="error u",
-                          marker_color="black", center_zero=True,
-                          save_path=file_path, show=show,
-                          suptitle=f"{self.model_name}: error = u_pred - u_target, W = {considered_W:g}")
+        return nn_plots.plot_heatmaps(
+            {self.model_name: df}, value=value, W=considered_W,
+            angle_req=angle_req, tau_req=tau_req,
+            save_path=save_path, show=show,
+            file_name=f"{self.model_name}_{value}_heatmaps_W_{considered_W:g}")

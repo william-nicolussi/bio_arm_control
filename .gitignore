@@ -1,7 +1,6 @@
-fr_fr_byophysical_arm
-models/myo_sim
 __pycache__/
 *.pyc
-models/*.csv
-models/W=0.2/grid_search/**/*.png
-models/W=0.2/grid_search/**/imgs/
+models/myo_sim
+models/**/*.png
+models/**/*.csv
+models/**/*.zip

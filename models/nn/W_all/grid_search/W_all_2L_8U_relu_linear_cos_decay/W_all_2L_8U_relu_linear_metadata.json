@@ -1,0 +1,80 @@
+{
+    "model_name": "W_all_2L_8U_relu_linear",
+    "W_values": [
+        0.0,
+        0.1,
+        0.2,
+        0.3,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.8,
+        0.9,
+        1.0
+    ],
+    "num_rows": 24827,
+    "hyperparameters": {
+        "num_parameters": 158,
+        "num_hidden_layers": 2,
+        "hidden_units": 8,
+        "activation": "relu",
+        "output_activation": "linear",
+        "seed": 42,
+        "epochs": 500,
+        "epochs_run": 500,
+        "batch_size": 512,
+        "learning_rate": 0.003,
+        "lr_factor": 0.5,
+        "lr_patience": 20,
+        "min_lr": 1e-06,
+        "final_learning_rate": null
+    },
+    "train_metrics": {
+        "mse": 0.0027490167412906885,
+        "rmse": 0.05243106558918953,
+        "mae": 0.035137541592121124,
+        "max_error": 0.46484822034835815,
+        "bias": -0.0010294741950929165,
+        "std_error": 0.0524209588766098,
+        "nrmse_pct": 5.243106365203857,
+        "fit_pct": 86.03997802734375,
+        "r2": 0.9805117845535278,
+        "correlation": 0.9904588257550738,
+        "non_finite": 0,
+        "per_muscle": {
+            "rmse": [
+                0.0469169095158577,
+                0.03872959688305855,
+                0.044713109731674194,
+                0.061996959149837494,
+                0.06528174877166748,
+                0.05184859409928322
+            ],
+            "max_error": [
+                0.24003250896930695,
+                0.24164080619812012,
+                0.19694304466247559,
+                0.298396497964859,
+                0.36681491136550903,
+                0.46484822034835815
+            ],
+            "r2": [
+                0.9865314960479736,
+                0.9886941909790039,
+                0.9826096296310425,
+                0.9767599105834961,
+                0.9620363116264343,
+                0.9825488328933716
+            ]
+        }
+    },
+    "validation_metrics": null,
+    "keras_version": "3.13.2",
+    "keras_backend": "torch",
+    "files": {
+        "model": "W_all_2L_8U_relu_linear.keras",
+        "history": "W_all_2L_8U_relu_linear_history.csv",
+        "predictions": "W_all_2L_8U_relu_linear_predictions.csv"
+    }
+}

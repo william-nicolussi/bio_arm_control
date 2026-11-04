@@ -1,0 +1,67 @@
+{
+    "model_name": "comb_lut_W_try",
+    "W_values": [
+        0.2,
+        0.3
+    ],
+    "num_rows": 222,
+    "hyperparameters": {
+        "num_parameters": 158,
+        "num_hidden_layers": 2,
+        "hidden_units": 8,
+        "activation": "relu",
+        "output_activation": "linear",
+        "seed": 42,
+        "epochs": 50,
+        "epochs_run": 50,
+        "batch_size": 64,
+        "learning_rate": 0.001
+    },
+    "train_metrics": {
+        "mse": 0.0017273533158004284,
+        "rmse": 0.041561439633369446,
+        "mae": 0.02539549581706524,
+        "max_error": 0.17114409804344177,
+        "bias": -0.00250674644485116,
+        "std_error": 0.041485775262117386,
+        "nrmse_pct": 4.156144142150879,
+        "fit_pct": 90.28057098388672,
+        "r2": 0.9905532598495483,
+        "correlation": 0.9954945663958736,
+        "non_finite": 0,
+        "per_muscle": {
+            "rmse": [
+                0.04104551300406456,
+                0.03571000695228577,
+                0.032277729362249374,
+                0.049932803958654404,
+                0.035736776888370514,
+                0.050910986959934235
+            ],
+            "max_error": [
+                0.12875157594680786,
+                0.16185066103935242,
+                0.16254442930221558,
+                0.14767879247665405,
+                0.11562499403953552,
+                0.17114409804344177
+            ],
+            "r2": [
+                0.990930438041687,
+                0.9930946230888367,
+                0.994350016117096,
+                0.9861398935317993,
+                0.9929268956184387,
+                0.9857283234596252
+            ]
+        }
+    },
+    "validation_metrics": null,
+    "keras_version": "3.13.2",
+    "keras_backend": "torch",
+    "files": {
+        "model": "comb_lut_W_try.keras",
+        "history": "comb_lut_W_try_history.csv",
+        "predictions": "comb_lut_W_try_predictions.csv"
+    }
+}

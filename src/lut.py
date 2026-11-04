@@ -2,8 +2,9 @@ import os
 import numpy as np
 import xarray as xr
 import pandas as pd
+from scipy.interpolate import RegularGridInterpolator
 
-from src.draw_6x2_heatmaps import draw_heatmaps
+from src import nn_plots
 
 class LUT:
     def __init__(self, nc_file_path: str):
@@ -25,6 +26,12 @@ class LUT:
 
         # useful
         self.torque_norm = None
+        self.angle_grid = None
+
+        # grid axes of the LUT, used by get_activations
+        self.W_grid = None
+        self.torque_norm_grid = None
+        self._interpolator = None  # built at the first call of get_activations
 
     def rename_variable(self, old_var_name: str, new_var_name: str) -> None:
         ds = xr.load_dataset(self.nc_file_path)
@@ -81,6 +88,9 @@ class LUT:
 
         # per-angle tables, used by LUTPreprocessing
         self.angle_grid = ds.angle.values
+        self.W_grid = ds.W.values
+        self.torque_norm_grid = ds.torque_norm.values
+        self._interpolator = None  # data changed: rebuild it when needed
         self.torque_min = ds.torque_min.values
         self.torque_max = ds.torque_max.values
         self.angle_min = float(ds.angle.min())
@@ -90,34 +100,82 @@ class LUT:
         print(f"W values: {ds.W.values}")
         print(f"LUT matrix dimension: {self.activations.shape}")
 
-    def plot_heatmaps(self, considered_W: float, angle_req: float = None, tau_req: float = None, save_path: str=None, show: bool = True) -> None:
-        mask = self.W == considered_W
-        if not np.any(mask):
-            raise ValueError(
-                f"W={considered_W} not found. Available: {np.unique(self.W)}"
-            )
+    def torque_to_norm(self, angle, torque) -> tuple:
+        """Torque in Nm -> torque_norm at that angle, as the pre-processing does.
+        Scalars or arrays. Returns (torque_norm, torque_min, torque_max)."""
+        if self.angle_grid is None:
+            raise RuntimeError("LUT not loaded: call load_data() first")
+        order = np.argsort(self.angle_grid)  # np.interp needs ascending angles
+        angles = self.angle_grid[order]
+        t_min = np.interp(angle, angles, self.torque_min[order])
+        t_max = np.interp(angle, angles, self.torque_max[order])
+        return (np.asarray(torque) - t_min) / (t_max - t_min), t_min, t_max
 
-        angle = self.angle[mask]
-        torque_norm = self.torque_norm[mask]
-        activations = self.activations[mask]
+    def _build_interpolator(self) -> None:
+        """Trilinear interpolator on the regular grid (W, angle, torque_norm)."""
+        axes = [self.W_grid, self.angle_grid, self.torque_norm_grid]
+        if len(self.W_grid) < 2:
+            raise ValueError(f"The LUT has only W={self.W_grid}: at least 2 W values are "
+                             f"needed to interpolate along W (load it without only_W)")
+        n_out = self.activations.shape[1]
+        cube = self.activations.reshape(*(len(a) for a in axes), n_out)  # rows are (W, angle, torque_norm)
 
-        # build the DataFrame that draw_heatmaps expects
+        # RegularGridInterpolator wants ascending axes
+        order = [np.argsort(a) for a in axes]
+        cube = cube[np.ix_(*order)]
+        axes = [a[o] for a, o in zip(axes, order)]
+
+        self._interpolator = RegularGridInterpolator(
+            axes, cube, method="linear", bounds_error=False, fill_value=np.nan)
+
+    def get_activations(self, W_req, angle_req, torque_req) -> np.ndarray:
+        """Activations u(0...5) interpolated (trilinear) at physical inputs, like NN_validator.predict:
+        W, angle (same unit as the LUT) and torque in Nm. Scalars or arrays of the same length.
+        Returns (N, 6). NaN outside the LUT domain (W or angle out of range, torque outside
+        [torque_min, torque_max]) and next to infeasible (NaN) cells of the LUT."""
+        if self.activations is None:
+            raise RuntimeError("LUT not loaded: call load_data() first")
+        W, angle, torque = np.broadcast_arrays(*(np.atleast_1d(np.asarray(v, dtype=float))
+                                                  for v in (W_req, angle_req, torque_req)))
+        torque_norm, _, _ = self.torque_to_norm(angle, torque)
+        if self._interpolator is None:
+            self._build_interpolator()
+        return self._interpolator(np.column_stack([W, angle, torque_norm]))
+
+    def to_dataframe(self, only_W: float = None) -> pd.DataFrame:
+        """One row per LUT point: W, angle, torque, torque_norm, u_target_0...5
+        (the format of nn_plots)."""
+        if self.activations is None:
+            raise RuntimeError("LUT not loaded: call load_data() first")
         df = pd.DataFrame({
-            'angle': angle,
-            'torque_norm': torque_norm,
+            "W": self.W,
+            "angle": self.angle,
+            "torque": self.torque,
+            "torque_norm": self.torque_norm,
         })
-        for i in range(activations.shape[1]):
-            df[i] = activations[:, i]
+        for i in range(self.activations.shape[1]):
+            df[f"u_target_{i}"] = self.activations[:, i]
+        if only_W is not None:
+            df = nn_plots.filter_predictions(df, W=only_W)
+        return df
 
-        draw_heatmaps(
-            df=df,
-            angle_min=self.angle_min,
-            angle_max=self.angle_max,
-            angle_req=angle_req,
-            tau_req=tau_req,
-            save_path = save_path,
-            show=show,
-            cmap='viridis',
-            title_prefix='u',
-            marker_color='red',
-        )
+    def plot_heatmaps(self, considered_W: float, angle_req: float = None, tau_req: float = None,
+                      save_path: str = None, show: bool = True) -> dict:
+        """Heatmaps of the LUT activations over (angle, torque_norm) for one W.
+        save_path: a folder, or a full .png path as before."""
+        df = self.to_dataframe()
+        if not np.isclose(df["W"], considered_W).any():
+            raise ValueError(f"W={considered_W} not found. Available: {np.unique(self.W)}")
+
+        folder, file_name = save_path, None
+        if save_path is not None and save_path.lower().endswith(".png"):
+            folder, file_name = os.path.split(save_path)
+            folder = folder or "."
+        if file_name is None:
+            file_name = f"LUT_heatmaps_W_{considered_W:g}"
+
+        return nn_plots.plot_heatmaps(
+            {"LUT": df}, value="u_target", W=considered_W,
+            angle_req=angle_req, tau_req=tau_req,
+            title=f"LUT activations, W = {considered_W:g}",
+            save_path=folder, file_name=file_name, show=show)

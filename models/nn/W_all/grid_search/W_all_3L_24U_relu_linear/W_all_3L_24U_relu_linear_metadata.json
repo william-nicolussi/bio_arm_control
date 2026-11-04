@@ -1,0 +1,76 @@
+{
+    "model_name": "W_all_3L_24U_relu_linear",
+    "W_values": [
+        0.0,
+        0.1,
+        0.2,
+        0.3,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.8,
+        0.9,
+        1.0
+    ],
+    "num_rows": 24827,
+    "hyperparameters": {
+        "num_parameters": 1446,
+        "num_hidden_layers": 3,
+        "hidden_units": 24,
+        "activation": "relu",
+        "output_activation": "linear",
+        "seed": 42,
+        "epochs": 400,
+        "epochs_run": 318,
+        "batch_size": 64,
+        "learning_rate": 0.001
+    },
+    "train_metrics": {
+        "mse": 0.00018126910435967147,
+        "rmse": 0.013463621959090233,
+        "mae": 0.008790474385023117,
+        "max_error": 0.325272798538208,
+        "bias": 0.00313273211941123,
+        "std_error": 0.013094085268676281,
+        "nrmse_pct": 1.3463622331619263,
+        "fit_pct": 96.41520690917969,
+        "r2": 0.9987149238586426,
+        "correlation": 0.9994068138217648,
+        "non_finite": 0,
+        "per_muscle": {
+            "rmse": [
+                0.011363447643816471,
+                0.009393705055117607,
+                0.010663116350769997,
+                0.01437656581401825,
+                0.01933017000555992,
+                0.01327388733625412
+            ],
+            "max_error": [
+                0.09063369780778885,
+                0.07699880003929138,
+                0.07358117401599884,
+                0.0973956286907196,
+                0.325272798538208,
+                0.10950139164924622
+            ],
+            "r2": [
+                0.9992098808288574,
+                0.9993348717689514,
+                0.9990109801292419,
+                0.9987502694129944,
+                0.9966714382171631,
+                0.9988561868667603
+            ]
+        }
+    },
+    "validation_metrics": null,
+    "keras_version": "3.13.2",
+    "keras_backend": "torch",
+    "files": {
+        "model": "W_all_3L_24U_relu_linear.keras",
+        "history": "W_all_3L_24U_relu_linear_history.csv",
+        "predictions": "W_all_3L_24U_relu_linear_predictions.csv"
+    }
+}

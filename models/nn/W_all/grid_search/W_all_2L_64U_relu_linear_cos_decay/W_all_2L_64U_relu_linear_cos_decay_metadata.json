@@ -1,0 +1,80 @@
+{
+    "model_name": "W_all_2L_64U_relu_linear_cos_decay",
+    "W_values": [
+        0.0,
+        0.1,
+        0.2,
+        0.3,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.8,
+        0.9,
+        1.0
+    ],
+    "num_rows": 24827,
+    "hyperparameters": {
+        "num_parameters": 4806,
+        "num_hidden_layers": 2,
+        "hidden_units": 64,
+        "activation": "relu",
+        "output_activation": "linear",
+        "seed": 42,
+        "epochs": 500,
+        "epochs_run": 500,
+        "batch_size": 512,
+        "learning_rate": 0.003,
+        "lr_factor": 0.5,
+        "lr_patience": 20,
+        "min_lr": 1e-06,
+        "final_learning_rate": null
+    },
+    "train_metrics": {
+        "mse": 9.135099389823154e-05,
+        "rmse": 0.009557771496474743,
+        "mae": 0.006230283062905073,
+        "max_error": 0.1689245104789734,
+        "bias": -0.00013413761917036027,
+        "std_error": 0.009556829929351807,
+        "nrmse_pct": 0.9557771682739258,
+        "fit_pct": 97.45519256591797,
+        "r2": 0.9993523955345154,
+        "correlation": 0.9996817105006515,
+        "non_finite": 0,
+        "per_muscle": {
+            "rmse": [
+                0.008648624643683434,
+                0.007101845927536488,
+                0.00854217354208231,
+                0.00930715911090374,
+                0.013074120506644249,
+                0.009609625674784184
+            ],
+            "max_error": [
+                0.07288146764039993,
+                0.06584179401397705,
+                0.0793825164437294,
+                0.10795852541923523,
+                0.1689245104789734,
+                0.11994898319244385
+            ],
+            "r2": [
+                0.9995423555374146,
+                0.9996198415756226,
+                0.9993652701377869,
+                0.9994762539863586,
+                0.9984773397445679,
+                0.9994005560874939
+            ]
+        }
+    },
+    "validation_metrics": null,
+    "keras_version": "3.13.2",
+    "keras_backend": "torch",
+    "files": {
+        "model": "W_all_2L_64U_relu_linear_cos_decay.keras",
+        "history": "W_all_2L_64U_relu_linear_cos_decay_history.csv",
+        "predictions": "W_all_2L_64U_relu_linear_cos_decay_predictions.csv"
+    }
+}

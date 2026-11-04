@@ -1,0 +1,76 @@
+{
+    "model_name": "W_all_4L_8U_relu_linear",
+    "W_values": [
+        0.0,
+        0.1,
+        0.2,
+        0.3,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.8,
+        0.9,
+        1.0
+    ],
+    "num_rows": 24827,
+    "hyperparameters": {
+        "num_parameters": 302,
+        "num_hidden_layers": 4,
+        "hidden_units": 8,
+        "activation": "relu",
+        "output_activation": "linear",
+        "seed": 42,
+        "epochs": 200,
+        "epochs_run": 200,
+        "batch_size": 64,
+        "learning_rate": 0.001
+    },
+    "train_metrics": {
+        "mse": 0.0018368549644947052,
+        "rmse": 0.0428585447371006,
+        "mae": 0.028881048783659935,
+        "max_error": 0.4674856960773468,
+        "bias": 0.003936534747481346,
+        "std_error": 0.0426773764193058,
+        "nrmse_pct": 4.285854339599609,
+        "fit_pct": 88.58869934082031,
+        "r2": 0.9869782328605652,
+        "correlation": 0.9936331075699935,
+        "non_finite": 0,
+        "per_muscle": {
+            "rmse": [
+                0.03547712415456772,
+                0.030145490542054176,
+                0.03638434410095215,
+                0.056475479155778885,
+                0.05026498809456825,
+                0.04258947819471359
+            ],
+            "max_error": [
+                0.2184440642595291,
+                0.1627252846956253,
+                0.17210495471954346,
+                0.3880881369113922,
+                0.3655310273170471,
+                0.4674856960773468
+            ],
+            "r2": [
+                0.9922987818717957,
+                0.9931504726409912,
+                0.9884848594665527,
+                0.9807150959968567,
+                0.9774931073188782,
+                0.9882251620292664
+            ]
+        }
+    },
+    "validation_metrics": null,
+    "keras_version": "3.13.2",
+    "keras_backend": "torch",
+    "files": {
+        "model": "W_all_4L_8U_relu_linear.keras",
+        "history": "W_all_4L_8U_relu_linear_history.csv",
+        "predictions": "W_all_4L_8U_relu_linear_predictions.csv"
+    }
+}

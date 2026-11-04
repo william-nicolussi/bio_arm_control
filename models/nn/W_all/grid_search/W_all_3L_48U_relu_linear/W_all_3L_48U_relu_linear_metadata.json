@@ -1,0 +1,76 @@
+{
+    "model_name": "W_all_3L_48U_relu_linear",
+    "W_values": [
+        0.0,
+        0.1,
+        0.2,
+        0.3,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.8,
+        0.9,
+        1.0
+    ],
+    "num_rows": 24827,
+    "hyperparameters": {
+        "num_parameters": 5190,
+        "num_hidden_layers": 3,
+        "hidden_units": 48,
+        "activation": "relu",
+        "output_activation": "linear",
+        "seed": 42,
+        "epochs": 400,
+        "epochs_run": 116,
+        "batch_size": 64,
+        "learning_rate": 0.001
+    },
+    "train_metrics": {
+        "mse": 0.00014086198643781245,
+        "rmse": 0.01186852902173996,
+        "mae": 0.007759816944599152,
+        "max_error": 0.2233428955078125,
+        "bias": -0.002549506025388837,
+        "std_error": 0.011591463349759579,
+        "nrmse_pct": 1.1868529319763184,
+        "fit_pct": 96.83991241455078,
+        "r2": 0.9990013837814331,
+        "correlation": 0.9995440495002911,
+        "non_finite": 0,
+        "per_muscle": {
+            "rmse": [
+                0.007189871743321419,
+                0.007359257433563471,
+                0.009025796316564083,
+                0.01337426993995905,
+                0.017393870279192924,
+                0.013282821513712406
+            ],
+            "max_error": [
+                0.05008512735366821,
+                0.049662619829177856,
+                0.06959861516952515,
+                0.12686100602149963,
+                0.2233428955078125,
+                0.12545150518417358
+            ],
+            "r2": [
+                0.999683678150177,
+                0.9995917677879333,
+                0.9992913603782654,
+                0.9989184737205505,
+                0.9973048567771912,
+                0.9988546371459961
+            ]
+        }
+    },
+    "validation_metrics": null,
+    "keras_version": "3.13.2",
+    "keras_backend": "torch",
+    "files": {
+        "model": "W_all_3L_48U_relu_linear.keras",
+        "history": "W_all_3L_48U_relu_linear_history.csv",
+        "predictions": "W_all_3L_48U_relu_linear_predictions.csv"
+    }
+}

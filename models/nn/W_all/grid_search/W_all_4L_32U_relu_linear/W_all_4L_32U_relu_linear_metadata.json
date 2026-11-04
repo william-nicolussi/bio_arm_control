@@ -1,0 +1,76 @@
+{
+    "model_name": "W_all_4L_32U_relu_linear",
+    "W_values": [
+        0.0,
+        0.1,
+        0.2,
+        0.3,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.8,
+        0.9,
+        1.0
+    ],
+    "num_rows": 24827,
+    "hyperparameters": {
+        "num_parameters": 3494,
+        "num_hidden_layers": 4,
+        "hidden_units": 32,
+        "activation": "relu",
+        "output_activation": "linear",
+        "seed": 42,
+        "epochs": 200,
+        "epochs_run": 162,
+        "batch_size": 64,
+        "learning_rate": 0.001
+    },
+    "train_metrics": {
+        "mse": 0.00013039768964517862,
+        "rmse": 0.011419180780649185,
+        "mae": 0.006849566008895636,
+        "max_error": 0.29662126302719116,
+        "bias": -0.00026894532493315637,
+        "std_error": 0.011416012421250343,
+        "nrmse_pct": 1.1419180631637573,
+        "fit_pct": 96.9595947265625,
+        "r2": 0.9990755915641785,
+        "correlation": 0.9995447025495626,
+        "non_finite": 0,
+        "per_muscle": {
+            "rmse": [
+                0.00889483280479908,
+                0.008741992525756359,
+                0.009416136890649796,
+                0.010532946325838566,
+                0.016857007518410683,
+                0.01196157094091177
+            ],
+            "max_error": [
+                0.06075584888458252,
+                0.07173554599285126,
+                0.0845956802368164,
+                0.1231374740600586,
+                0.29662126302719116,
+                0.08906832337379456
+            ],
+            "r2": [
+                0.9995158910751343,
+                0.9994239807128906,
+                0.9992287755012512,
+                0.9993292093276978,
+                0.9974687099456787,
+                0.9990711808204651
+            ]
+        }
+    },
+    "validation_metrics": null,
+    "keras_version": "3.13.2",
+    "keras_backend": "torch",
+    "files": {
+        "model": "W_all_4L_32U_relu_linear.keras",
+        "history": "W_all_4L_32U_relu_linear_history.csv",
+        "predictions": "W_all_4L_32U_relu_linear_predictions.csv"
+    }
+}
