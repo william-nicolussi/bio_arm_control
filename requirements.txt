@@ -1,0 +1,11 @@
+numpy
+pandas
+scipy
+xarray
+matplotlib
+mujoco
+numba
+keras
+torch
+minjerk-dynamics
+jupyter

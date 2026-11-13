@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+
+# Editor
+.vscode/
+
+# MuJoCo
+assets/robotic_arm.xml
+assets/myo_motor
+assets/myo_weld
+MUJOCO_LOG.TXT
+
+# Outputs generated locally
+models/*
+!models/README.md
+simulations/*
+!simulations/README.md
+plots/
+
+# Legacy repository
+fr_fr_biophysical_arm/
