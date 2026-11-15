@@ -5,6 +5,7 @@ import xarray as xr
 
 from scipy.interpolate import RegularGridInterpolator
 from src.utils.plotting import plot_cartesian, plot_heatmaps
+from src.lut.cost_function import cost_terms, cost_i, cost_total, u_rest
 
 # Lut attribute -> name inside the .nc file
 NAMES = {"w": "W",
@@ -326,6 +327,76 @@ class Lut:
                       colorbar_label="activation",
                       vmin=0.0,
                       vmax=1.0,
+                      x_req=theta_req,
+                      y_req=tau_norm_req,
+                      marker_color="red",
+                      save_path=save_path,
+                      show=show)
+
+    # ----- plots of the cost (formula in cost_function.py) -----
+    def plot_cost(self, w: float = None, n_points: int = 500,
+                  save_path: str = None, show: bool = True) -> None:
+        """J_i(u) and its terms at one W of the LUT (as Fig. 4 of Parsa et al.).
+        w = None -> the first W of the LUT; otherwise the nearest W of the grid."""
+        W = float(self.w[0] if w is None else self.w[np.argmin(np.abs(self.w - w))])
+        u = np.linspace(0.0, 1.0, n_points)
+        terms = cost_terms(u, W, self.p)                 # {label: values}, any number of terms
+
+        curves = list(terms.values()) + [sum(terms.values())]
+        labels = list(terms.keys()) + [r"$J_i$"]
+        colors = [f"C{i}" for i in range(len(terms))] + ["k"]   # the total in black
+        plot_cartesian(title=rf"{self.lut_name}: $J_i(u)$, p = {self.p:g}, W = {W:g}, "
+                             rf"$u^*$ = {u_rest(W, self.p):.3f}",
+                       x=u,
+                       y=curves,
+                       labels=labels,
+                       colors=colors,
+                       x_label="u",
+                       y_label=r"$J_i(u)$",
+                       save_path=save_path,
+                       show=show)
+
+    def plot_cost_all_w(self, save_path: str = None, show: bool = True) -> None:
+        """J_i(u) for every W of the LUT, with the minimum u* of each curve in the legend."""
+        Lut.plot_cost_curves([(self.p, W) for W in self.w],
+                             title=rf"{self.lut_name}: $J_i(u)$ for every W of the LUT",
+                             save_path=save_path, show=show)
+
+    @staticmethod
+    def plot_cost_curves(params, n_points: int = 500, title: str = None,
+                         save_path: str = None, show: bool = True) -> None:
+        """J_i(u) for every (p, W) in params, e.g. [(2, 0.15), (3, 0.15)] to compare p.
+        Static: no LUT needed, the curve depends only on (p, W)."""
+        u = np.linspace(0.0, 1.0, n_points)
+        curves, labels = [], []
+        for p, W in params:
+            curves.append(cost_i(u, W, p))
+            labels.append(rf"p = {p:g}, W = {W:g}: $u^*$ = {u_rest(W, p):.3f}")
+        plot_cartesian(title=title or r"$J_i(u)$ for different (p, W)",
+                       x=u,
+                       y=curves,
+                       labels=labels,
+                       x_label="u",
+                       y_label=r"$J_i(u)$",
+                       save_path=save_path,
+                       show=show)
+
+    def plot_heatmap_cost(self, w: float, velocity: float = 0.0,
+                          theta_req: float = None, tau_norm_req: float = None,
+                          save_path: str = None, show: bool = True) -> None:
+        """Total cost J_p of the solutions stored in the LUT, on (theta, tau_norm) at one W and velocity."""
+        iw = np.argmin(np.abs(self.w - w))
+        v = np.argmin(np.abs(self.theta_dot - velocity))
+        J = cost_total(self.activations[iw, :, v, :, :], float(self.w[iw]), self.p)   # (A, T)
+        plot_heatmaps(title=rf"{self.lut_name}: $J_p$ at W = {self.w[iw]:g}, "
+                            rf"$\dot{{\theta}}$ = {self.theta_dot[v]:g} deg/s",
+                      x=self.theta,
+                      y=self.tau_norm,
+                      z=[J],
+                      subplot_titles=[r"$J_p = \sum_i J_i(u_i)$"],
+                      x_label=r"$\theta$ [deg]",
+                      y_label=r"$\tau_{norm}$",
+                      colorbar_label=r"$J_p$",
                       x_req=theta_req,
                       y_req=tau_norm_req,
                       marker_color="red",

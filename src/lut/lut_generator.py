@@ -1,71 +1,102 @@
 import os
 import time
-import math
 import mujoco
 import numpy as np
 
 from numba import njit
 from src.lut.lut import Lut
+from src.lut.cost_function import u_from_y, cost_total, cost_derivative
 
-@njit(cache=True)
-def _u_i(lam, K_i, W, p):
-    y = lam * K_i
-    a = p * (1 - W)
+# No cache=True: numba's cache does not see changes in cost_function.py, and would keep the old cost
 
-    if y >= a + W:
-        return 1.0
-    if W == 0: # W = 0:  p u^(p-1) = y  ->  u = (y/p)^(1/(p-1));  if y <= 0 the muscle is off
-        return (y / p) ** (1 / (p - 1)) if y > 0 else 0.0
-    if W == 1: # W = 1:  ln u + 1 = y  ->  u = e^(y-1)
-        return math.exp(y - 1)
-
-    # 0 < W < 1: no closed form, bisection on s = ln u  (so u = e^s, u^(p-1) = e^((p-1)s))
-    s_lo = min((y - W) / W, math.log(W / a) / (p - 1)) - 1.0   # here left side < y
-    s_hi = 0.0                                                   # here left side > y (u = 1)
-    for _ in range(200):
-        s = 0.5 * (s_lo + s_hi)
-        left = a * math.exp((p - 1) * s) + W * (s + 1)
-        if left < y:
-            s_lo = s # u too small: the solution is to the right
-        else:
-            s_hi = s # u too large: the solution is to the left
-        if s_hi - s_lo < 1e-13 * (1.0 + abs(s_lo)): # relative: works for any size of s
-            break
-    return math.exp(0.5 * (s_lo + s_hi))
-
-@njit(cache=True)
+@njit
 def _u(lam, K, W, p):
+    """The 6 equations of the notes with lambda fixed: u_i = u_from_y(lam K_i) for every muscle."""
     u = np.zeros(K.shape[0])
     for i in range(K.shape[0]):
-        u[i] = _u_i(lam, K[i], W, p)
+        u[i] = u_from_y(lam * K[i], W, p)
     return u
 
-@njit(cache=True)
+@njit
 def _residual(lam, tau_0, K, tau_ref, W, p):
     return tau_0 + np.dot(K, _u(lam, K, W, p)) - tau_ref
 
-@njit(cache=True)
+@njit
 def _solve_interior(tau_0, K, tau_ref, W, p, tol):
+    """Zero of the residual in lambda. The residual is increasing in lambda for every
+    separable, strictly convex cost: nothing here depends on the form of J."""
     # bracket: find lam_lo with residual < 0 and lam_hi with residual > 0
     lam_lo = -1.0
-    while _residual(lam_lo, tau_0, K, tau_ref, W, p) > 0: # torque still too high: go left
+    r_lo = _residual(lam_lo, tau_0, K, tau_ref, W, p)
+    while r_lo > 0: # torque still too high: go left
         lam_lo *= 2
+        r_lo = _residual(lam_lo, tau_0, K, tau_ref, W, p)
     lam_hi = 1.0
-    while _residual(lam_hi, tau_0, K, tau_ref, W, p) < 0: # torque still too low: go right
+    r_hi = _residual(lam_hi, tau_0, K, tau_ref, W, p)
+    while r_hi < 0: # torque still too low: go right
         lam_hi *= 2
+        r_hi = _residual(lam_hi, tau_0, K, tau_ref, W, p)
 
-    # bisection: halve [lam_lo, lam_hi] keeping the zero inside
+    # Illinois method: secant between the two ends of the bracket, the zero always stays inside.
+    # Converges much faster than bisection; when the same end moves twice in a row, the value
+    # at the other end is halved, so that end moves too (plain regula falsi can get stuck)
     lam = 0.5 * (lam_lo + lam_hi) # numba wants lam defined before the loop
+    side = 0                      # which end moved last: -1 lam_lo, +1 lam_hi
     for _ in range(200):
-        lam = 0.5 * (lam_lo + lam_hi)
+        lam = (lam_lo * r_hi - lam_hi * r_lo) / (r_hi - r_lo) # zero of the line through the two ends
         r = _residual(lam, tau_0, K, tau_ref, W, p)
         if abs(r) < tol: # torque error below tol Nm: solved
             break
-        if r < 0:
-            lam_lo = lam # torque too low: the solution is to the right
-        else:
-            lam_hi = lam # torque too high: the solution is to the left
+        if r < 0: # torque too low: the solution is to the right
+            lam_lo, r_lo = lam, r
+            if side == -1:
+                r_hi *= 0.5
+            side = -1
+        else:     # torque too high: the solution is to the left
+            lam_hi, r_hi = lam, r
+            if side == 1:
+                r_lo *= 0.5
+            side = 1
     return _u(lam, K, W, p), lam
+
+@njit
+def _tau_min_max(tau_0, K):
+    """Torque range of one state: muscles with K_i < 0 at 1 (tau_min) or with K_i > 0 at 1 (tau_max).
+    The only place where tau_min and tau_max are computed: the grid and the edge test below
+    must give the same bits, otherwise tau_ref = tau_min could end up in _solve_interior."""
+    tau_min = tau_0
+    tau_max = tau_0
+    for k in K:
+        if k < 0:
+            tau_min += k
+        else:
+            tau_max += k
+    return tau_min, tau_max
+
+@njit
+def _solve_point(tau_0, K, tau_ref, W, p, tol):
+    """The 7 equations of the notes at one point: u (6,) and lam."""
+    tau_min, tau_max = _tau_min_max(tau_0, K)
+    # edges: only one u gives tau_min (or tau_max), and lambda would be -inf (or +inf)
+    if tau_ref <= tau_min:
+        return (K < 0).astype(np.float64), -np.inf
+    if tau_ref >= tau_max:
+        return (K > 0).astype(np.float64), np.inf
+    return _solve_interior(tau_0, K, tau_ref, W, p, tol)
+
+@njit
+def _solve_angle(tau_0, K, tau, W, p, tol):
+    """All the points of one angle, with no Python in between: K (V, M), tau (V, T) -> u (V, T, M), lam (V, T)."""
+    V, T = tau.shape
+    M = K.shape[1]
+    u = np.zeros((V, T, M))
+    lam = np.zeros((V, T))
+    for v in range(V):
+        for t in range(T):
+            u_vt, lam_vt = _solve_point(tau_0, K[v], tau[v, t], W, p, tol)
+            u[v, t, :] = u_vt
+            lam[v, t] = lam_vt
+    return u, lam
 
 class LutGenerator:
     def __init__(self, path_model: str, p_value: float, w_values):
@@ -197,10 +228,10 @@ class LutGenerator:
         return (K > 0).astype(float)
 
     def get_tau_min(self, tau_0: float, K: np.ndarray) -> float:
-        return self.get_tau(tau_0, K, self.get_u_min(K))
+        return _tau_min_max(float(tau_0), np.ascontiguousarray(K, dtype=np.float64))[0]
 
     def get_tau_max(self, tau_0: float, K: np.ndarray) -> float:
-        return self.get_tau(tau_0, K, self.get_u_max(K))
+        return _tau_min_max(float(tau_0), np.ascontiguousarray(K, dtype=np.float64))[1]
 
     def get_tau_from_norm(self, tau_norm, tau_min, tau_max):
         """tau_norm in [0, 1] -> tau [Nm]. Used when building the LUT: tau_norm is the grid we choose."""
@@ -250,13 +281,10 @@ class LutGenerator:
     def populate_tau(self) -> None:
         """self.tau (A, V, T): the tau_ref of the notes, T values for every state,
         all inside [tau_min, tau_max] of that state."""
-        A, V, T = len(self.theta), len(self.theta_dot), len(self.tau_norm)
-        self.tau = np.zeros((A, V, T))
-        for a in range(A):
-            for v in range(V):
-                for t in range(T):
-                    self.tau[a, v, t] = self.get_tau_from_norm(
-                        self.tau_norm[t], self.tau_min[a, v], self.tau_max[a, v])
+        # broadcasting: tau_norm (1, 1, T), tau_min and tau_max (A, V, 1) -> (A, V, T)
+        self.tau = self.get_tau_from_norm(self.tau_norm[np.newaxis, np.newaxis, :],
+                                          self.tau_min[:, :, np.newaxis],
+                                          self.tau_max[:, :, np.newaxis])
 
     def populate_u_lam(self) -> None:
         """self.u (W, A, V, T, M) and self.lam (W, A, V, T): solution of the system at every point."""
@@ -269,22 +297,18 @@ class LutGenerator:
             start_W = time.perf_counter()
             for a in range(A):
                 print(f"\r  W = {W:g}: angle {a + 1}/{A}", end="", flush=True)   # progress
-                for v in range(V):
-                    for t in range(T):
-                        self.u[w, a, v, t], self.lam[w, a, v, t] = self.solve_system(
-                            self.tau_0[a], self.K[a, v], self.tau[a, v, t], W)
+                # all (velocity, torque) of this angle in one compiled call
+                self.u[w, a], self.lam[w, a] = _solve_angle(
+                    float(self.tau_0[a]), self.K[a], self.tau[a], float(W), self.p_value, 1e-10)
             print(f"\nW = {W:g} done in {time.perf_counter() - start_W:.1f} s")    
     
     def check_constraint(self, tol: float = 1e-6) -> float:
         """The 7th equation must hold at every point: |tau_0 + sum K_i u_i - tau_ref| < tol.
         Returns the largest error [Nm]; raises if it is above tol."""
-        err = 0.0
-        for w in range(len(self.w_values)):
-            for a in range(len(self.theta)):
-                for v in range(len(self.theta_dot)):
-                    for t in range(len(self.tau_norm)):
-                        tau_check = self.get_tau(self.tau_0[a], self.K[a, v], self.u[w, a, v, t])
-                        err = max(err, abs(tau_check - self.tau[a, v, t]))
+        # tau_0 + sum_i K_i u_i at every point: K (A, V, M), u (nW, A, V, T, M) -> (nW, A, V, T)
+        tau_check = (self.tau_0[np.newaxis, :, np.newaxis, np.newaxis]
+                     + np.einsum("avm,wavtm->wavt", self.K, self.u))
+        err = float(np.max(np.abs(tau_check - self.tau[np.newaxis])))
         if err > tol:
             raise RuntimeError(f"torque constraint not satisfied: max error {err:.2e} Nm")
         return err
@@ -295,22 +319,17 @@ class LutGenerator:
         """Solves the 7 equations of the notes at one point:
             f'(u_i) = lam K_i  (6 eq.)    and    tau_0 + sum K_i u_i = tau_ref  (1 eq.)
         Returns u (6,) and lam."""
-        # edges: only one u gives tau_min (or tau_max), and lambda would be -inf (or +inf)
-        if tau_ref <= self.get_tau_min(tau_0, K):
-            return self.get_u_min(K), -math.inf
-        if tau_ref >= self.get_tau_max(tau_0, K):
-            return self.get_u_max(K), math.inf
-
-        # interior: bracket + bisection on lambda (compiled with numba, see _solve_interior)
-        return _solve_interior(tau_0, K, tau_ref, W, self.p_value, tol)
+        # edges and interior, compiled with numba (see _solve_point)
+        return _solve_point(float(tau_0), np.ascontiguousarray(K, dtype=np.float64),
+                            float(tau_ref), float(W), self.p_value, tol)
 
     def get_u(self, lam: float, K: np.ndarray, W: float) -> np.ndarray:
         """The 6 equations of the notes with lambda fixed: u_i(lambda) for every muscle."""
-        return _u(lam, K, W, self.p_value)
+        return _u(float(lam), np.ascontiguousarray(K, dtype=np.float64), float(W), self.p_value)
 
     def get_u_i(self, lam: float, K_i: float, W: float) -> float:
-        """ONE of the 6 equations, lambda fixed: p(1-W) u_i^(p-1) + W (ln u_i + 1) = lam K_i, clipped to [0, 1]."""
-        return _u_i(lam, K_i, W, self.p_value)
+        """ONE of the 6 equations, lambda fixed: J_i'(u_i) = lam K_i, clipped to [0, 1] (see cost_function.u_from_y)."""
+        return u_from_y(lam * K_i, float(W), self.p_value)
 
     # ----- ONLINE ALLOCATION -----
     def get_activations(self, W: float, angle: float, torque: float, velocity: float = 0.0) -> np.ndarray:
@@ -330,7 +349,6 @@ class LutGenerator:
         """Compare the solver with scipy SLSQP on random states (call it after generate_lut). Returns the largest
         |u_solver - u_slsqp|; raises if SLSQP finds a lower cost (the solver would be wrong)."""
         from scipy.optimize import minimize
-        from scipy.special import xlogy   # x ln x with 0 ln 0 = 0
 
         rng = np.random.default_rng(seed)
         lo, hi = np.rad2deg(self._model.jnt_range[0])
@@ -349,10 +367,10 @@ class LutGenerator:
             u, _ = self.solve_system(tau_0, K, tau_ref, W)
 
             def cost(x):
-                return (1 - W) * np.sum(x ** p) + W * np.sum(xlogy(x, x))
+                return cost_total(x, W, p)
 
             res = minimize(cost, np.full(len(K), 0.5), method="SLSQP",
-                           jac=lambda x: p * (1 - W) * x ** (p - 1) + W * (np.log(np.maximum(x, 1e-300)) + 1),
+                           jac=lambda x: cost_derivative(x, W, p),
                            bounds=[(1e-12, 1.0)] * len(K),
                            constraints={"type": "eq", "fun": lambda x: tau_0 + K @ x - tau_ref,
                                         "jac": lambda x: K},
