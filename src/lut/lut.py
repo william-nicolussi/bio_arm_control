@@ -4,6 +4,7 @@ import pandas as pd
 import xarray as xr
 
 from scipy.interpolate import RegularGridInterpolator
+from src.utils.plotting import plot_cartesian, plot_heatmaps
 
 # Lut attribute -> name inside the .nc file
 NAMES = {"w": "W",
@@ -213,18 +214,120 @@ class Lut:
                                              bounds_error=False, fill_value=np.nan)
         return act_interp(points) # (N, n_act)
 
+    # ----- print -----
+    def print_info(self) -> None:
+        print(f"Lut name: {self.lut_name}")
+        print(f"Model: {self.model_name}")
+        print(f"p = {self.p:g}")
+        print(f"w = {self.w}")
+        print(f"Num angles: {len(self.theta)} from {self.theta[0]:g} to {self.theta[-1]:g} deg")
+        print(f"Num velocities: {len(self.theta_dot)} from {self.theta_dot[0]:g} to {self.theta_dot[-1]:g} deg/s")
+        print(f"Num torques: {len(self.tau_norm)} per (angle, velocity)")
+        print(f"Grid points: {self.lam.size}")   # n_W * A * V * T
+
+        # shape and memory of every array
+        total = 0
+        for name in ("tau", "tau_min", "tau_max", "tau_0", "k", "lam", "activations"):
+            arr = getattr(self, name)
+            total += arr.nbytes
+            print(f"  {name:<12}: shape {str(arr.shape):<22} {arr.nbytes / 1e6:8.2f} MB")
+        print(f"Total in memory: {total / 1e6:.1f} MB")
+
     # ----- plots -----
-    def plot_tau_0():
-        print("to do")
+    def plot_tau_0(self, save_path: str = None, show: bool = True) -> None:
+        plot_cartesian(title=rf"{self.lut_name}: $\tau_0(\theta)$",
+                       x=self.theta,
+                       y=self.tau_0,
+                       x_label=r"$\theta$ [deg]",
+                       y_label=r"$\tau_0$ [Nm]",
+                       save_path=save_path,
+                       show=show)
 
-    def plot_tau_min_max():
-        print("to do")
+    def plot_tau_min_max(self, velocity: float = 0.0, save_path: str = None, show: bool = True) -> None:
+        v = np.argmin(np.abs(self.theta_dot - velocity))   # nearest velocity of the grid
+        plot_cartesian(title=rf"{self.lut_name}: $\tau_{{min}}$, $\tau_{{max}}$ "
+                             rf"at $\dot{{\theta}}$ = {self.theta_dot[v]:g} deg/s",
+                       x=self.theta,
+                       y=[self.tau_min[:, v], self.tau_max[:, v]],
+                       labels=[r"$\tau_{min}$", r"$\tau_{max}$"],
+                       x_label=r"$\theta$ [deg]",
+                       y_label=r"$\tau$ [Nm]",
+                       save_path=save_path,
+                       show=show)
 
-    def plot_heatmaps(self, considered_W: float, angle_req: float = None, tau_req: float = None,
-                      save_path: str = None, show: bool = True, velocity: float = 0.0) -> dict:
-        print("to do")
+    def plot_tau_with_tau_min_max(self, velocity: float = 0.0, save_path: str = None,
+                                  show: bool = True) -> None:
+        v = np.argmin(np.abs(self.theta_dot - velocity))   # nearest velocity of the grid
+        n_t = len(self.tau_norm)
 
-    def plot_heatmaps_k():
-        print("to do")
+        # grid curves: t = 0 and t = n_t - 1 coincide with tau_min and tau_max, skipped
+        curves = [self.tau[:, v, t] for t in range(1, n_t - 1)]
+        labels = [None] * len(curves)
+        colors = ["0.75"] * len(curves) # light gray
 
-    
+        # limits, drawn last so they stay on top
+        curves += [self.tau_min[:, v], self.tau_max[:, v]]
+        labels += [r"$\tau_{min}$", r"$\tau_{max}$"]
+        colors += ["C0", "C3"]
+
+        plot_cartesian(title=rf"{self.lut_name}: $\tau$ grid at $\dot{{\theta}}$ = "
+                             rf"{self.theta_dot[v]:g} deg/s, edge density = {self.edge_density:g}",
+                       x=self.theta,
+                       y=curves,
+                       labels=labels,
+                       colors=colors,
+                       x_label=r"$\theta$ [deg]",
+                       y_label=r"$\tau$ [Nm]",
+                       save_path=save_path,
+                       show=show)
+
+    def plot_heatmaps_k(self, theta_req: float = None, theta_dot_req: float = None,
+                        save_path: str = None, show: bool = True) -> None:
+        n_act = self.k.shape[-1]
+
+        subplot_titles = []
+        for index in range(n_act):
+            subplot_titles.append(f"act({index + 1}): {self.muscles_names[index]}")
+
+        plot_heatmaps(title=rf"{self.lut_name}: $K_i(\theta, \dot{{\theta}})$",
+                      x=self.theta,
+                      y=self.theta_dot,
+                      z=[self.k[:, :, i] for i in range(n_act)],
+                      subplot_titles=subplot_titles,
+                      x_label=r"$\theta$ [deg]",
+                      y_label=r"$\dot{\theta}$ [deg/s]",
+                      colorbar_label="K [Nm]",
+                      cmap="bwr",
+                      centered=True,
+                      x_req=theta_req,
+                      y_req=theta_dot_req,
+                      marker_color="black",
+                      save_path=save_path,
+                      show=show)
+
+    def plot_heatmaps_activations(self, w: float, velocity: float = 0.0,
+                                  theta_req: float = None, tau_norm_req: float = None,
+                                  save_path: str = None, show: bool = True) -> None:
+        iw = np.argmin(np.abs(self.w - w))
+        v = np.argmin(np.abs(self.theta_dot - velocity))
+        n_act = self.activations.shape[-1]
+
+        subplot_titles = []
+        for index in range(n_act):
+            subplot_titles.append(f"act({index + 1}): {self.muscles_names[index]}")
+        plot_heatmaps(title=rf"{self.lut_name}: activations at W = {self.w[iw]:g}, "
+                      rf"$\dot{{\theta}}$ = {self.theta_dot[v]:g} deg/s",
+                      x=self.theta,
+                      y=self.tau_norm,
+                      z=[self.activations[iw, :, v, :, i] for i in range(n_act)],
+                      subplot_titles=subplot_titles,
+                      x_label=r"$\theta$ [deg]",
+                      y_label=r"$\tau_{norm}$",
+                      colorbar_label="activation",
+                      vmin=0.0,
+                      vmax=1.0,
+                      x_req=theta_req,
+                      y_req=tau_norm_req,
+                      marker_color="red",
+                      save_path=save_path,
+                      show=show)

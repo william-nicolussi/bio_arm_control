@@ -3,8 +3,9 @@ import time
 import math
 import mujoco
 import numpy as np
-import xarray as xr
+
 from numba import njit
+from src.lut.lut import Lut
 
 @njit(cache=True)
 def _u_i(lam, K_i, W, p):
@@ -105,10 +106,10 @@ class LutGenerator:
         # useful
         self.lut = None
         self.nc_path = None
-        
+  
     # ----- MAIN METHOD -----
-    def generate_lut(self, torque_points: int, angle_points: int,
-                     max_theta_dot: float, velocity_points: int, edge_density: float) -> xr.Dataset:
+    def generate_lut(self, lut_name: str, torque_points: int, angle_points: int,
+                     max_theta_dot: float, velocity_points: int, edge_density: float) -> None:
         
         if velocity_points % 2 == 0:
             raise ValueError("velocity_points must be odd, so that 0 is a grid node")
@@ -134,8 +135,22 @@ class LutGenerator:
         print(f"LUT generated in {time.perf_counter() - start:.1f} s: "
               f"max |tau_0 + K u - tau_ref| = {err:.1e} Nm")
 
-        self.lut = self._to_dataset()
-        return self.lut
+        self.lut = Lut(lut_name=lut_name,
+                       model_name=os.path.basename(self.path_model),
+                       p=self.p_value,
+                       muscles_names=self.muscles,
+                       edge_density=edge_density,
+                       w=self.w_values,
+                       theta=self.theta,
+                       theta_dot=self.theta_dot,
+                       tau=self.tau,
+                       tau_0=self.tau_0,
+                       k=self.K,
+                       lam=self.lam,
+                       tau_norm=self.tau_norm,
+                       tau_min=self.tau_min,
+                       tau_max=self.tau_max,
+                       activations=self.u)
 
     # ---- To perform calculations ----
     def _torque(self, theta: float, theta_dot: float, act: np.ndarray) -> float:
@@ -309,67 +324,6 @@ class LutGenerator:
         K = self.get_K(angle, velocity)
         u, _ = self.solve_system(tau_0, K, float(torque), float(W))
         return u.reshape(1, -1)
-
-    # ----- OUTPUT -----
-    def _to_dataset(self) -> xr.Dataset:
-        """LUT as an xarray Dataset. The names inside the file (angle, velocity, torque_norm,
-        torque, ...) are the ones read by lut.py: do not rename them."""
-        ds = xr.Dataset(
-            data_vars={
-                "activation_value": (("W", "angle", "velocity", "torque_norm", "activation_idx"), self.u),
-                "torque": (("angle", "velocity", "torque_norm"), self.tau),
-                "torque_min": (("angle", "velocity"), self.tau_min),
-                "torque_max": (("angle", "velocity"), self.tau_max),
-                "tau_0": (("angle",), self.tau_0),
-                "K": (("angle", "velocity", "activation_idx"), self.K),
-            },
-            coords={
-                "W": self.w_values,
-                "angle": self.theta,             # deg
-                "velocity": self.theta_dot,      # deg/s
-                "torque_norm": self.tau_norm,
-                "activation_idx": np.arange(len(self.muscles)),
-                "muscle": ("activation_idx", self.muscles),
-            },
-        )
-        ds.attrs.update(p=self.p_value,
-                        model_file=os.path.basename(self.path_model))
-        return ds
-
-    def save(self, nc_file_path: str) -> None:
-        if self.lut is None:
-            raise RuntimeError("LUT not generated yet: call generate_lut() first")
-        os.makedirs(os.path.dirname(os.path.abspath(nc_file_path)), exist_ok=True)
-        # temporary file + replace: on Windows the target may be open, and a file on disk is always complete
-        temp_file = nc_file_path + ".tmp"
-        self.lut.to_netcdf(temp_file)
-        os.replace(temp_file, nc_file_path)
-        self.nc_path = nc_file_path
-        print(f"File NC saved in: {nc_file_path}")
-
-    def to_csv(self, csv_file_path: str) -> None:
-        """CSV export, delegated to LUT (one implementation only). Needs the LUT saved first."""
-        from src.lut import Lut
-        Lut(self._saved_path()).to_csv(csv_file_path)
-
-    def save_heatmaps(self, folder: str, velocities=None) -> None:
-        """Heatmaps (angle, torque_norm) of every W at some velocities, delegated to LUT.
-        velocities: list in deg/s; default: minimum, 0 and maximum of the grid."""
-        from src.lut import Lut
-        if velocities is None:
-            velocities = [self.theta_dot[0], 0.0, self.theta_dot[-1]]
-        lut = Lut(self._saved_path())
-        lut.load_data()
-        os.makedirs(folder, exist_ok=True)
-        for W in self.w_values:
-            for v in velocities:
-                path = os.path.join(folder, f"heatmap_W_{W:g}_vel_{v:g}_p{self.p_value:g}.png")
-                lut.plot_heatmaps(considered_W=float(W), save_path=path, show=False, velocity=v)
-
-    def _saved_path(self) -> str:
-        if self.nc_path is None:
-            raise RuntimeError("LUT not saved yet: call save() first")
-        return self.nc_path
 
     # ----- INFO AND CHECKS -----
     def check_solver(self, n_tests: int = 50, seed: int = 0) -> float:
