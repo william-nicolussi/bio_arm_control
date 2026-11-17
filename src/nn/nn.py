@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from src.utils.metrics import compute_metrics, evaluate_grid
 from src.nn.nn_preprocessing import NnPreprocessing  # noqa: F401  registers the layer, needed by load_model
 from src.utils.plotting import plot_cartesian, plot_heatmaps, plot_parity
 
@@ -27,36 +28,6 @@ def grid_inputs(lut) -> dict:
         "angle": column(lut.theta[None, :, None, None]),
         "velocity": column(lut.theta_dot[None, None, :, None]),
         "torque": column(lut.tau[None, :, :, :]),
-    }
-
-def compute_metrics(u_target: np.ndarray, u_pred: np.ndarray) -> dict:
-    """Errors of u_pred against u_target, both (N, M): global values and one value per muscle."""
-    error = u_pred - u_target
-    deviation = u_target - u_target.mean(axis=0)              # target minus its mean, muscle by muscle
-
-    # global (all muscles together)
-    mse = float(np.mean(error ** 2))
-    r2 = 1.0 - np.sum(error ** 2) / np.sum(deviation ** 2)
-
-    # per muscle
-    rmse_per_muscle = np.sqrt(np.mean(error ** 2, axis=0))
-    r2_per_muscle = 1.0 - np.sum(error ** 2, axis=0) / np.sum(deviation ** 2, axis=0)
-    # FIT (MATLAB NRMSE fit): 100 % = perfect, 0 % = as good as a constant equal to the mean
-    fit_per_muscle = 100.0 * (1.0 - np.linalg.norm(error, axis=0) / np.linalg.norm(deviation, axis=0))
-
-    return {
-        "mse": mse,
-        "rmse": float(np.sqrt(mse)),
-        "mae": float(np.mean(np.abs(error))),
-        "max_error": float(np.max(np.abs(error))),
-        "bias": float(np.mean(error)),
-        "r2": float(r2),
-        "fit_pct": float(np.mean(fit_per_muscle)),
-        "rmse_per_muscle": rmse_per_muscle.tolist(),
-        "bias_per_muscle": np.mean(error, axis=0).tolist(),
-        "max_error_per_muscle": np.max(np.abs(error), axis=0).tolist(),
-        "r2_per_muscle": r2_per_muscle.tolist(),
-        "fit_pct_per_muscle": fit_per_muscle.tolist(),
     }
 
 def _to_builtin(value):
@@ -207,20 +178,7 @@ class NeuralNetwork:
     def evaluate(self, lut) -> dict:
         """Metrics of the network on every grid point of a LUT (the training LUT or another one):
         errors on u (global and per muscle) and torque error |tau_0 + K·u - tau_ref| [Nm]."""
-        u_pred = np.clip(self._predict_grid(lut), 0.0, 1.0)                # (n_W, A, V, T, M)
-        n_outputs = u_pred.shape[-1]
-        metrics = compute_metrics(lut.activations.reshape(-1, n_outputs), u_pred.reshape(-1, n_outputs))
-
-        torque_error = np.abs(self._torque_grid(lut, u_pred) - lut.tau[None, :, :, :])
-        metrics["torque_err_mean_Nm"] = float(np.mean(torque_error))
-        metrics["torque_err_p95_Nm"] = float(np.percentile(torque_error, 95))
-        metrics["torque_err_max_Nm"] = float(np.max(torque_error))
-        return metrics
-
-    @staticmethod
-    def _torque_grid(lut, u: np.ndarray) -> np.ndarray:
-        """Torque tau_0 + K·u [Nm] produced by u (n_W, A, V, T, M) at every grid point: (n_W, A, V, T)."""
-        return lut.tau_0[None, :, None, None] + np.einsum("avm,wavtm->wavt", lut.k, u)
+        return evaluate_grid(np.clip(self._predict_grid(lut), 0.0, 1.0), lut)
 
     # ----- validation -----
     def validate(self, lut) -> dict:
@@ -266,6 +224,7 @@ class NeuralNetwork:
         self._print_metrics("Train metrics", self.train_metrics)
         if self.validation_metrics:
             self._print_metrics(f"Validation metrics ({self.validation_lut_name})", self.validation_metrics)
+    
     @staticmethod
     def _print_metrics(title: str, metrics: dict) -> None:
         # only the scalar metrics: the per-muscle vectors are in the metadata file
@@ -273,6 +232,10 @@ class NeuralNetwork:
         for name, value in metrics.items():
             if isinstance(value, (int, float)):
                 print(f"  {name:<20}: {value:.4g}")
+
+    def print_validation_metrics(self):
+        if self.validation_metrics:
+            self._print_metrics(f"Validation metrics ({self.validation_lut_name})", self.validation_metrics)
 
     # ----- plots -----
     def plot_structure(self, save_path: str = None, show: bool = True) -> None:

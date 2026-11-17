@@ -2,50 +2,58 @@ import keras
 import numpy as np
 from keras import ops
 
+
 @keras.saving.register_keras_serializable(package="lut_nn")
 class NnPreprocessing(keras.layers.Layer):
 
-    def __init__(self, angle_min, angle_max, velocity_min, velocity_max,
-                torque_min, torque_max, **kwargs):
+    def __init__(self, torque_min, torque_max, angles=None, velocities=None,
+                 angle_min=None, angle_max=None, velocity_min=None, velocity_max=None, **kwargs):
         kwargs.pop("trainable", None)
         super().__init__(trainable=False, **kwargs)
-        self.angle_min = float(angle_min)
-        self.angle_max = float(angle_max)
-        self.velocity_min = float(velocity_min)
-        self.velocity_max = float(velocity_max)
 
         # tables (n_angles, n_velocities)
         self.torque_min = np.asarray(torque_min, dtype="float32")
         self.torque_max = np.asarray(torque_max, dtype="float32")
         if self.torque_min.ndim != 2 or self.torque_min.shape != self.torque_max.shape:
             raise ValueError("torque_min / torque_max must be 2D (n_angles, n_velocities) with the same shape")
+        n_angles, n_velocities = self.torque_min.shape
 
-        self.n_angles, self.n_velocities = self.torque_min.shape
-        self.angle_step = (self.angle_max - self.angle_min) / (self.n_angles - 1)
-        self.velocity_step = (self.velocity_max - self.velocity_min) / (self.n_velocities - 1)
-        
+        # grid nodes; models saved before non-uniform grids have only min and max: uniform grid, as before
+        if angles is None:
+            angles = np.linspace(angle_min, angle_max, n_angles)
+        if velocities is None:
+            velocities = np.linspace(velocity_min, velocity_max, n_velocities)
+        self.angles = self._check_nodes("angle", angles, n_angles)
+        self.velocities = self._check_nodes("velocity", velocities, n_velocities)
+
+        self.angle_min, self.angle_max = float(self.angles[0]), float(self.angles[-1])
+        self.velocity_min, self.velocity_max = float(self.velocities[0]), float(self.velocities[-1])
+        self.n_angles, self.n_velocities = n_angles, n_velocities
+
+    @staticmethod
+    def _check_nodes(name: str, nodes, n: int) -> np.ndarray:
+        nodes = np.asarray(nodes, dtype="float32").reshape(-1)
+        if len(nodes) != n or n < 2 or np.any(np.diff(nodes) <= 0):
+            raise ValueError(f"The {name} grid must be strictly increasing with {n} values (one per table row/column)")
+        return nodes
+
     @classmethod
     def from_lut(cls, lut, **kwargs):
-        # the layer finds the cell as (x - x_min) / step: valid only on uniform grids
-        for name, axis in (("angle", lut.theta), ("velocity", lut.theta_dot)):
-            steps = np.diff(axis)
-            if len(axis) < 2 or np.any(steps <= 0) or not np.allclose(steps, steps[0]):
-                raise ValueError(f"The {name} grid of the LUT must be uniform and increasing")
-
         expected = (len(lut.theta), len(lut.theta_dot))
         if lut.tau_min.shape != expected or lut.tau_max.shape != expected:
             raise ValueError(f"tau_min / tau_max must have shape {expected}")
-
-        return cls(angle_min=lut.theta[0], angle_max=lut.theta[-1],
-                velocity_min=lut.theta_dot[0], velocity_max=lut.theta_dot[-1],
-                torque_min=lut.tau_min, torque_max=lut.tau_max, **kwargs)
+        return cls(torque_min=lut.tau_min, torque_max=lut.tau_max,
+                   angles=lut.theta, velocities=lut.theta_dot, **kwargs)
 
     @staticmethod
-    def _cell(x, x_min, step, n):
-        # index of the grid cell (0 ... n-2) and position inside it (0 ... 1)
-        pos = (x - x_min) / step
-        idx = ops.clip(ops.floor(pos), 0, n - 2)
-        return ops.cast(idx, "int32"), pos - idx
+    def _cell(x, nodes):
+        """Index of the grid cell (0 ... n-2) and position inside it (0 ... 1), for any increasing grid:
+        the index is the number of inner nodes <= x. x (batch, 1), already clipped to the grid."""
+        inner = ops.convert_to_tensor(nodes[1:-1])                           # (n-2,)
+        idx = ops.sum(ops.cast(x >= inner, "int32"), axis=-1, keepdims=True)  # (batch, 1)
+        t = ops.convert_to_tensor(nodes)
+        x0, x1 = ops.take(t, idx), ops.take(t, idx + 1)
+        return idx, (x - x0) / (x1 - x0)
 
     def _bilinear(self, table, ia, fa, iv, fv):
         # table (n_angles, n_velocities) read as a flat vector: element [a, v] is at a * n_velocities + v
@@ -64,8 +72,8 @@ class NnPreprocessing(keras.layers.Layer):
         velocity = ops.clip(velocity, self.velocity_min, self.velocity_max)
 
         # torque limits at (angle, velocity), interpolated like Lut.get_activations
-        ia, fa = self._cell(angle, self.angle_min, self.angle_step, self.n_angles)
-        iv, fv = self._cell(velocity, self.velocity_min, self.velocity_step, self.n_velocities)
+        ia, fa = self._cell(angle, self.angles)
+        iv, fv = self._cell(velocity, self.velocities)
         t_min = self._bilinear(self.torque_min, ia, fa, iv, fv)
         t_max = self._bilinear(self.torque_max, ia, fa, iv, fv)
 
@@ -86,8 +94,7 @@ class NnPreprocessing(keras.layers.Layer):
         config = super().get_config()
         config.pop("trainable", None)
         config.update(
-            angle_min=self.angle_min, angle_max=self.angle_max,
-            velocity_min=self.velocity_min, velocity_max=self.velocity_max,
+            angles=self.angles.tolist(), velocities=self.velocities.tolist(),
             torque_min=self.torque_min.tolist(), torque_max=self.torque_max.tolist(),
         )
         return config

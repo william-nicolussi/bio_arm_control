@@ -142,7 +142,7 @@ class LutGenerator:
     def generate_lut(self, lut_name: str, torque_points: int, angle_points: int,
                      max_theta_dot: float, velocity_points: int, edge_density: float) -> None:
         
-        if velocity_points % 2 == 0:
+        if np.ndim(velocity_points) == 0 and velocity_points % 2 == 0:
             raise ValueError("velocity_points must be odd, so that 0 is a grid node")
         if max_theta_dot <= 0:
             raise ValueError("max_theta_dot must be > 0")
@@ -238,21 +238,50 @@ class LutGenerator:
         return (1.0 - tau_norm) * tau_min + tau_norm * tau_max   # exact at tau_norm = 0 and 1
 
     # ---- Populate parameters ----
-    def populate_theta(self, angle_points) -> None:
+    def populate_theta(self, angles) -> None:
+        """angles: number of uniform points on the joint range of the model, or the angles themselves [deg]
+        (increasing, inside the joint range: e.g. the nodes of grid_design.nodes_minimax)."""
         m = self._model
         if m.njnt != 1 or not m.jnt_limited[0]:
             raise ValueError("expected a model with one limited joint")
         theta_min, theta_max = np.rad2deg(m.jnt_range[0])   # [0] = the only joint; XML is in rad
-        self.theta = np.linspace(theta_min, theta_max, angle_points)
 
-    def populate_theta_dot(self, max_theta_dot, velocity_points):
-        self.theta_dot = np.linspace(-max_theta_dot, max_theta_dot, velocity_points)
+        if np.ndim(angles) == 0:                             # a number: uniform grid, as before
+            self.theta = np.linspace(theta_min, theta_max, int(angles))
+            return
+        theta = np.asarray(angles, dtype=float)
+        if np.any(np.diff(theta) <= 0):
+            raise ValueError("the angles must be strictly increasing")
+        if theta[0] < theta_min - 1e-9 or theta[-1] > theta_max + 1e-9:
+            raise ValueError(f"the angles must be inside the joint range [{theta_min:g}, {theta_max:g}] deg")
+        self.theta = theta
+        
+    def populate_theta_dot(self, max_theta_dot, velocities) -> None:
+        """velocities: number of uniform points on [-max_theta_dot, max_theta_dot], or the velocities themselves
+        [deg/s] (increasing, inside the range: e.g. the midpoints of a training grid, for validation)."""
+        if np.ndim(velocities) == 0:
+            self.theta_dot = np.linspace(-max_theta_dot, max_theta_dot, int(velocities))
+            return
+        theta_dot = np.asarray(velocities, dtype=float)
+        if np.any(np.diff(theta_dot) <= 0):
+            raise ValueError("the velocities must be strictly increasing")
+        if np.any(np.abs(theta_dot) > max_theta_dot + 1e-9):
+            raise ValueError(f"the velocities must be inside [-{max_theta_dot:g}, {max_theta_dot:g}] deg/s")
+        self.theta_dot = theta_dot
 
-    def populate_tau_norm(self, torque_points, edge_density):
-        """self.tau_norm: torque_points values in [0, 1], moved towards 0 and 1 by edge_density.
-        edge_density = 0 -> uniform grid."""
-        s = np.linspace(0.0, 1.0, torque_points)                    # uniform grid
-        self.tau_norm = s - edge_density * np.sin(2 * np.pi * s) / (2 * np.pi)
+    def populate_tau_norm(self, torques, edge_density) -> None:
+        """torques: number of points in [0, 1] moved towards 0 and 1 by edge_density (0 = uniform), or the
+        torque_norm values themselves (increasing, in [0, 1]); edge_density is then not used."""
+        if np.ndim(torques) == 0:
+            s = np.linspace(0.0, 1.0, int(torques))                 # uniform grid
+            self.tau_norm = s - edge_density * np.sin(2 * np.pi * s) / (2 * np.pi)
+            return
+        tau_norm = np.asarray(torques, dtype=float)
+        if np.any(np.diff(tau_norm) <= 0):
+            raise ValueError("the torque_norm values must be strictly increasing")
+        if tau_norm[0] < 0.0 or tau_norm[-1] > 1.0:
+            raise ValueError("the torque_norm values must be in [0, 1]")
+        self.tau_norm = tau_norm
 
     def populate_tau_0(self):
         self.tau_0 = np.zeros(len(self.theta))

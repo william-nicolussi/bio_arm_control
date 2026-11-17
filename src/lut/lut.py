@@ -4,7 +4,8 @@ import pandas as pd
 import xarray as xr
 
 from scipy.interpolate import RegularGridInterpolator
-from src.utils.plotting import plot_cartesian, plot_heatmaps
+from src.utils.metrics import compute_metrics, evaluate_grid
+from src.utils.plotting import plot_cartesian, plot_heatmaps, plot_parity
 from src.lut.cost_function import cost_terms, cost_i, cost_total, u_rest
 
 # Lut attribute -> name inside the .nc file
@@ -94,6 +95,14 @@ class Lut:
                      tau_max = ds[NAMES["tau_max"]].values,
                      activations = ds[NAMES["activations"]].values)
         return my_lut
+
+    # ----- evaluation -----
+    def evaluate(self, lut) -> dict:
+        """Metrics of this LUT, interpolated, at every grid point of another LUT (e.g. the validation LUT):
+        same keys as NeuralNetwork.evaluate; n_excluded = points that cannot be interpolated."""
+        if lut.lut_name == self.lut_name:
+            raise ValueError(f"'{lut.lut_name}' is this LUT: the metrics would be perfect by construction")
+        return evaluate_grid(self._interp_grid(lut), lut)
 
     # ----- save methods -----
     def save_nc(self, dir_nc: str) -> None:
@@ -333,6 +342,58 @@ class Lut:
                       save_path=save_path,
                       show=show)
 
+    # ----- parity against another LUT -----
+    def plot_parity(self, lut, w: float = None, velocity: float = None, max_points: int = 20000,
+                    seed: int = 0, save_path: str = None, show: bool = True) -> None:
+        """u interpolated from this LUT against the exact u of another LUT (e.g. the validation LUT), one panel
+        per muscle: on the whole grid of lut, or only at one W and/or one velocity (the grid values nearest to
+        w, velocity). Points this LUT cannot interpolate (NaN) are excluded and counted in the title."""
+        if lut.lut_name == self.lut_name:
+            raise ValueError(f"'{lut.lut_name}' is this LUT: the parity would be perfect by construction")
+
+        u_pred = self._interp_grid(lut)                                 # (n_W, A, V, T, M), NaN outside
+        u_target = lut.activations
+
+        # selection: one W and/or one velocity of the grid of lut (None = all of them)
+        selection = []
+        iw, iv = slice(None), slice(None)
+        if w is not None:
+            iw = int(np.argmin(np.abs(lut.w - w)))
+            selection.append(f"W = {lut.w[iw]:g}")
+        if velocity is not None:
+            iv = int(np.argmin(np.abs(lut.theta_dot - velocity)))
+            selection.append(f"velocity = {lut.theta_dot[iv]:g} deg/s")
+        n_outputs = u_pred.shape[-1]
+        u_pred = u_pred[iw, :, iv].reshape(-1, n_outputs)               # (N, M)
+        u_target = u_target[iw, :, iv].reshape(-1, n_outputs)
+
+        # points that cannot be interpolated: excluded from metrics and plot
+        finite = np.all(np.isfinite(u_pred), axis=1)
+        n_excluded = int(np.sum(~finite))
+        u_pred, u_target = u_pred[finite], u_target[finite]
+
+        metrics = compute_metrics(u_target, u_pred)
+        texts = [f"RMSE {rmse:.3f}   R² {r2:.4f}"
+                 for rmse, r2 in zip(metrics["rmse_per_muscle"], metrics["r2_per_muscle"])]
+
+        # points drawn: a random subset, the same for the same seed
+        n_points = len(u_target)
+        rng = np.random.default_rng(seed)
+        drawn = rng.choice(n_points, size=min(max_points, n_points), replace=False)
+
+        plot_parity(title=f"{self.lut_name} interpolated vs {lut.lut_name}: parity, "
+                          f"{', '.join(selection) if selection else 'whole grid'}"
+                          f"{f' ({n_excluded} points not interpolable)' if n_excluded else ''}",
+            x=[[u_target[drawn, i] for i in range(n_outputs)]],
+            y=[[u_pred[drawn, i] for i in range(n_outputs)]],
+            labels=[f"{self.lut_name} (interpolated)"],
+            subplot_titles=[f"u({i + 1}): {name}" for i, name in enumerate(self.muscles_names)],
+            texts=[texts],
+            x_label=f"u {lut.lut_name}",
+            y_label="u interpolated",
+            save_path=save_path,
+            show=show)
+
     # ----- plots of the cost (formula in cost_function.py) -----
     def plot_cost(self, w: float = None, n_points: int = 500,
                   save_path: str = None, show: bool = True) -> None:
@@ -362,6 +423,31 @@ class Lut:
                              title=rf"{self.lut_name}: $J_i(u)$ for every W of the LUT",
                              save_path=save_path, show=show)
 
+    def plot_u_rest(self, error: bool = False, w_nodes=None, n_points: int = 5000,
+                    save_path: str = None, show: bool = True) -> None:
+        """Rest activation u*(W) = u_rest(W, p), the minimum of J_i without torque constraint: exact curve
+        against the linear interpolation between w_nodes (default: the W of this LUT); with error=True,
+        their difference. The cost comes only from cost_function.py."""
+        w_nodes = self.w if w_nodes is None else np.asarray(w_nodes, dtype=float)
+
+        # fine grid: geometric near W = 0 (u* has infinite slope there), uniform elsewhere
+        w = np.unique(np.concatenate(([0.0], np.geomspace(1e-6, 1.0, n_points // 2),
+                                      np.linspace(0.0, 1.0, n_points // 2))))
+        u = np.array([u_rest(w_k, self.p) for w_k in w])
+        u_lin = np.interp(w, w_nodes, [u_rest(w_k, self.p) for w_k in w_nodes])   # straight lines between nodes
+
+        if error:
+            plot_cartesian(title=f"{self.lut_name}: interpolation error of u*(W), p = {self.p:g}",
+                           x=w, y=[u - u_lin],
+                           x_label="W", y_label="u* exact - u* interpolated",
+                           save_path=save_path, show=show)
+        else:
+            plot_cartesian(title=f"{self.lut_name}: u*(W), p = {self.p:g}, exact vs linear interpolation",
+                           x=w, y=[u, u_lin],
+                           labels=["exact", f"linear interpolation ({len(w_nodes)} W)"],
+                           x_label="W", y_label="u*",
+                           save_path=save_path, show=show)
+               
     @staticmethod
     def plot_cost_curves(params, n_points: int = 500, title: str = None,
                          save_path: str = None, show: bool = True) -> None:
@@ -402,3 +488,14 @@ class Lut:
                       marker_color="red",
                       save_path=save_path,
                       show=show)
+
+    # ----- Utils -----
+    def _interp_grid(self, lut) -> np.ndarray:
+        """u of this LUT interpolated at every grid point of another LUT: (n_W, A, V, T, M), NaN where it
+        cannot interpolate (torque outside the interpolated [tau_min, tau_max])."""
+        shape = lut.activations.shape[:-1]                                    # (n_W, A, V, T)
+        w = np.broadcast_to(lut.w[:, None, None, None], shape).ravel()
+        theta = np.broadcast_to(lut.theta[None, :, None, None], shape).ravel()
+        theta_dot = np.broadcast_to(lut.theta_dot[None, None, :, None], shape).ravel()
+        tau = np.broadcast_to(lut.tau[None, :, :, :], shape).ravel()
+        return self.get_activations(w, theta, theta_dot, tau).reshape(lut.activations.shape)
