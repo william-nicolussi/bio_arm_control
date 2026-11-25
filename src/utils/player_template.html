@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>__TITLE__</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 16px; background: #fafafa; color: #222; }
+  .bar { display: flex; align-items: center; gap: 10px; margin: 8px 0; flex-wrap: wrap; }
+  input[type=range] { flex: 1; min-width: 200px; max-width: 700px; }
+  button { font-size: 15px; padding: 4px 12px; cursor: pointer; }
+  #time { font-variant-numeric: tabular-nums; min-width: 110px; }
+  #layers label { margin-right: 14px; cursor: pointer; }
+  #frames { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+  #frames figure { margin: 0; text-align: center; font-size: 13px; color: #555; }
+  #frames img { height: var(--image-height); width: auto; border: 1px solid #ccc; display: block; }
+</style></head><body>
+<h3>__TITLE__</h3>
+<div class="bar">
+  <button id="play">&#9654; play</button>
+  <input id="slider" type="range" min="0" value="0" step="1">
+  <span id="time"></span>
+  <label>speed <select id="speed"><option>0.25</option><option>0.5</option><option selected>1</option>
+    <option>2</option></select></label>
+  <label>size <input id="size" type="range" min="20" max="90" value="55"></label>
+</div>
+<div class="bar" id="layers">show:</div>
+<div id="frames"></div>
+<script>
+const layers = __LAYERS__, times = __TIMES__, interval = __INTERVAL__;
+const names = Object.keys(layers), n = layers[names[0]].length;
+const slider = document.getElementById("slider"), label = document.getElementById("time");
+const button = document.getElementById("play"), speed = document.getElementById("speed");
+const size = document.getElementById("size");
+const images = {};
+for (const name of names) {               // one image and one checkbox per layer
+  const figure = document.createElement("figure"), img = document.createElement("img");
+  const caption = document.createElement("figcaption");
+  caption.textContent = name;
+  figure.append(img, caption);
+  document.getElementById("frames").append(figure);
+  images[name] = img;
+  const box = document.createElement("input"), text = document.createElement("label");
+  box.type = "checkbox"; box.checked = true;
+  box.onchange = () => { figure.style.display = box.checked ? "" : "none"; };
+  text.append(box, " " + name);
+  document.getElementById("layers").append(text);
+}
+function resize() { document.body.style.setProperty("--image-height", size.value + "vh"); }
+size.oninput = resize; resize();
+slider.max = n - 1;
+let timer = null;
+function show(k) {
+  k = Math.max(0, Math.min(n - 1, k));
+  slider.value = k;
+  for (const name of names) images[name].src = layers[name][k];
+  label.textContent = times.length ? "t = " + times[k].toFixed(0) + " ms" : "frame " + k;
+}
+function stop() { clearInterval(timer); timer = null; button.innerHTML = "&#9654; play"; }
+function play() {
+  if (+slider.value >= n - 1) show(0);
+  button.innerHTML = "&#10074;&#10074; pause";
+  timer = setInterval(() => {
+    if (+slider.value >= n - 1) { stop(); return; }
+    show(+slider.value + 1);
+  }, interval / parseFloat(speed.value));
+}
+button.onclick = () => (timer ? stop() : play());
+speed.onchange = () => { if (timer) { stop(); play(); } };
+slider.oninput = () => { stop(); show(+slider.value); };
+document.onkeydown = (e) => {
+  if (e.key === "ArrowRight") { stop(); show(+slider.value + 1); }
+  else if (e.key === "ArrowLeft") { stop(); show(+slider.value - 1); }
+  else if (e.key === " ") { e.preventDefault(); timer ? stop() : play(); }
+};
+show(0);
+</script></body></html>

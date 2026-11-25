@@ -9,3 +9,6 @@ keras
 torch
 minjerk-dynamics
 jupyter
+imageio
+imageio-ffmpeg
+ipywidgets

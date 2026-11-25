@@ -17,6 +17,7 @@ models/*
 simulations/*
 !simulations/README.md
 plots/
+videos/
 
 # Legacy repository
 fr_fr_biophysical_arm/
